@@ -21,13 +21,13 @@ class OrderProcessor(BaseProcessor):
         super().__init__(config)
 
     def __call__(self, document: Document):
-        layout_rules = self.rule_engine.get_rules("layout")
-        regions_rule = next((rule for rule in layout_rules if rule.get("type") == "define_regions"), None)
+        block_ordering_rules = self.rule_engine.get_rules("block_ordering", [])
+        regions_rule = next((rule for rule in block_ordering_rules if rule.get("type") == "define_regions"), None)
 
         for page in document.pages:
             if regions_rule and page.page_id in regions_rule.get("pages", []):
                 self.apply_define_regions_rule(page, document, regions_rule)
-            elif page.layout_sliced and page.text_extraction_method == "pdftext":
+            else:
                 self.apply_default_ordering(page, document)
 
     def _sort_blocks_in_reading_order(self, blocks: List[Block], layout_type: str, page_width: float) -> List[Block]:
@@ -77,41 +77,53 @@ class OrderProcessor(BaseProcessor):
         page.structure = new_structure
 
     def apply_default_ordering(self, page: PageGroup, document: Document):
-        block_idxs = defaultdict(int)
-        for block_id in page.structure:
-            block = document.get_block(block_id)
-            spans = block.contained_blocks(document, (BlockTypes.Span, ))
-            if len(spans) == 0:
+        for page in document.pages:
+            # Skip OCRed pages
+            if page.text_extraction_method != "pdftext":
                 continue
 
-            block_idxs[block_id] = (spans[0].minimum_position + spans[-1].maximum_position) / 2
-
-        for block_id in page.structure:
-            if block_idxs[block_id] > 0:
+            # Skip pages without layout slicing
+            if not page.layout_sliced:
                 continue
 
-            block = document.get_block(block_id)
-            prev_block = document.get_prev_block(block)
-            next_block = document.get_next_block(block)
+            block_idxs = defaultdict(int)
+            for block_id in page.structure:
+                block = document.get_block(block_id)
+                spans = block.contained_blocks(document, (BlockTypes.Span, ))
+                if len(spans) == 0:
+                    continue
 
-            block_idx_add = 0
-            if prev_block:
-                block_idx_add = 1
+                # Avg span position in original PDF
+                block_idxs[block_id] = (spans[0].minimum_position + spans[-1].maximum_position) / 2
 
-            while prev_block and prev_block.id not in block_idxs:
-                prev_block = document.get_prev_block(prev_block)
-                block_idx_add += 1
+            for block_id in page.structure:
+                # Already assigned block id via span position
+                if block_idxs[block_id] > 0:
+                    continue
 
-            if not prev_block:
-                block_idx_add = -1
-                while next_block and next_block.id not in block_idxs:
-                    next_block = document.get_next_block(next_block)
-                    block_idx_add -= 1
+                block = document.get_block(block_id)
+                prev_block = document.get_prev_block(block)
+                next_block = document.get_next_block(block)
 
-            if prev_block:
-                block_idxs[block_id] = block_idxs[prev_block.id] + block_idx_add
-            elif next_block:
-                block_idxs[block_id] = block_idxs[next_block.id] + block_idx_add
+                block_idx_add = 0
+                if prev_block:
+                    block_idx_add = 1
 
-        page.structure = sorted(page.structure, key=lambda x: block_idxs[x])
+                while prev_block and prev_block.id not in block_idxs:
+                    prev_block = document.get_prev_block(prev_block)
+                    block_idx_add += 1
 
+                if not prev_block:
+                    block_idx_add = -1
+                    while next_block and next_block.id not in block_idxs:
+                        next_block = document.get_next_block(next_block)
+                        block_idx_add -= 1
+
+                if not next_block and not prev_block:
+                    pass
+                elif prev_block:
+                    block_idxs[block_id] = block_idxs[prev_block.id] + block_idx_add
+                else:
+                    block_idxs[block_id] = block_idxs[next_block.id] + block_idx_add
+
+            page.structure = sorted(page.structure, key=lambda x: block_idxs[x])
