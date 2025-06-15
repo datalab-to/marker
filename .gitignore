@@ -177,3 +177,5 @@ cython_debug/
 .idea/
 
 .vscode/
+
+local_notes

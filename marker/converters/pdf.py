@@ -47,9 +47,11 @@ from marker.schema.registry import register_block_class
 from marker.util import strings_to_classes
 from marker.processors.llm.llm_handwriting import LLMHandwritingProcessor
 from marker.processors.order import OrderProcessor
+from marker.processors.layout_rules import LayoutRuleProcessor
 from marker.services.gemini import GoogleGeminiService
 from marker.processors.line_merge import LineMergeProcessor
 from marker.processors.llm.llm_mathblock import LLMMathBlockProcessor
+from marker.rules import RuleEngine
 
 
 class PdfConverter(BaseConverter):
@@ -69,6 +71,7 @@ class PdfConverter(BaseConverter):
         "Enable higher quality processing with LLMs.",
     ] = False
     default_processors: Tuple[BaseProcessor, ...] = (
+        LayoutRuleProcessor,
         OrderProcessor,
         BlockRelabelProcessor,
         LineMergeProcessor,
@@ -109,6 +112,9 @@ class PdfConverter(BaseConverter):
 
         if config is None:
             config = {}
+
+        self.rule_engine = RuleEngine(config.get("rules_path"))
+        artifact_dict["rule_engine"] = self.rule_engine
 
         for block_type, override_block_type in self.override_map.items():
             register_block_class(block_type, override_block_type)

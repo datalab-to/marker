@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from marker.processors import BaseProcessor
 from marker.processors.llm import BaseLLMSimpleBlockProcessor
 from marker.processors.llm.llm_meta import LLMSimpleBlockMetaProcessor
+from marker.rules import RuleEngine
 from marker.util import assign_config, download_font
 
 
@@ -14,6 +15,7 @@ class BaseConverter:
         assign_config(self, config)
         self.config = config
         self.llm_service = None
+        self.rule_engine: RuleEngine | None = None
 
         # Download render font, needed for some providers
         download_font()
@@ -31,6 +33,8 @@ class BaseConverter:
                 continue
             elif param_name == 'config':
                 resolved_kwargs[param_name] = self.config
+            elif param.name == 'rule_engine':
+                resolved_kwargs[param_name] = self.rule_engine
             elif param.name in self.artifact_dict:
                 resolved_kwargs[param_name] = self.artifact_dict[param_name]
             elif param.default != inspect.Parameter.empty:

@@ -82,6 +82,12 @@ class ConfigParser:
             default=None,
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
+        fn = click.option(
+            "--rules",
+            type=str,
+            default=None,
+            help="Path to YAML file with parsing rules.",
+        )(fn)
         return fn
 
     def generate_config_dict(self) -> Dict[str, any]:
@@ -106,6 +112,8 @@ class ConfigParser:
                     config["pdftext_workers"] = 1
                 case "disable_image_extraction":
                     config["extract_images"] = False
+                case "rules":
+                    config["rules_path"] = v
                 case _:
                     if k in crawler.attr_set:
                         config[k] = v
