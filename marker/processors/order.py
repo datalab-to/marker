@@ -14,6 +14,10 @@ class OrderProcessor(BaseProcessor):
 
     def __call__(self, document: Document):
         for page in document.pages:
+            # If a layout rule has already been applied to this page, skip it
+            if hasattr(page, 'layout_rules_applied') and page.layout_rules_applied:
+                continue
+
             # Skip OCRed pages
             if page.text_extraction_method != "pdftext":
                 continue

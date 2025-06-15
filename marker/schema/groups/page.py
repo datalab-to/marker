@@ -34,6 +34,7 @@ class PageGroup(Group):
     block_description: str = "A single page in the document."
     refs: List[Reference] | None = None
     ocr_errors_detected: bool = False
+    layout_rules_applied: List[str] = []
 
     def incr_block_id(self):
         if self.block_id is None:
