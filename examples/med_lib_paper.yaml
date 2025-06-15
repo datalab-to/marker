@@ -1,6 +1,6 @@
 version: "1.0"
 rules:
-  layout:
+  block_ordering:
     - type: "define_regions"
       # Apply this rule only to the first page (0-indexed)
       pages: [0]
