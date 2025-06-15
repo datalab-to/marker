@@ -1,9 +1,8 @@
-from typing import List, Dict
+from typing import Dict
 
 from marker.processors import BaseProcessor
 from marker.rules import RuleEngine
 from marker.schema.document import Document
-from marker.schema.blocks import Block
 from marker.schema.groups import PageGroup
 
 
@@ -19,8 +18,6 @@ class LayoutRuleProcessor(BaseProcessor):
         super().__init__(config)
 
     def __call__(self, document: Document):
-        # This is inefficient, but the alternative is passing the document to every method
-        # and having every method re-fetch the rules
         for page in document.pages:
             self.apply_rules(page, document)
 
