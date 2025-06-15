@@ -44,21 +44,13 @@ class LayoutRuleProcessor(BaseProcessor):
             return
 
         page_width = page.polygon.width
-        gutter_width = page_width * width_ratio
+        blocks_to_remove = []
 
-        if position == "left":
-            # Filter out blocks that are mostly in the left gutter
-            filtered_structure = [
-                block_id for block_id in page.structure
-                if document.get_block(block_id).polygon.x_start >= gutter_width
-            ]
-        elif position == "right":
-            # Filter out blocks that are mostly in the right gutter
-            filtered_structure = [
-                block_id for block_id in page.structure
-                if document.get_block(block_id).polygon.x_end <= (page_width - gutter_width)
-            ]
-        else:
-            return
+        for block_id in page.structure:
+            block = document.get_block(block_id)
+            if position == "left" and block.polygon.x_end < page_width * width_ratio:
+                blocks_to_remove.append(block_id)
+            elif position == "right" and block.polygon.x_start > page_width * (1 - width_ratio):
+                blocks_to_remove.append(block_id)
 
-        page.structure = filtered_structure 
+        page.remove_structure_items(blocks_to_remove)
