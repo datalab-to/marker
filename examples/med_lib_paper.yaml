@@ -1,0 +1,19 @@
+version: "1.0"
+rules:
+  layout:
+    - type: "define_regions"
+      # Apply this rule only to the first page (0-indexed)
+      pages: [0]
+      regions:
+        - name: "abstract"
+          y_start_percent: 0
+          y_end_percent: 37
+          layout_type: "two_column"
+
+        - name: "main_content"
+          y_start_percent: 37
+          y_end_percent: 100
+          layout_type: "two_column"
+      
+      # Define the order in which to read the regions
+      region_order: ["abstract", "main_content"] 
