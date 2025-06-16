@@ -249,7 +249,7 @@ class MoleculeLayoutBuilder(BaseBuilder):
 
     def detect_molecules_and_tables(self, pages: List[PageGroup]) -> List[dict]:
         """
-        Detect molecules and tables on each page using img2mol
+        Detect molecules and tables on each page using img2mol _prediction_from_pdf
         
         Returns:
             List of detection results for each page
@@ -259,10 +259,10 @@ class MoleculeLayoutBuilder(BaseBuilder):
         for page_idx, page in enumerate(tqdm(pages, disable=self.disable_tqdm, desc="Detecting molecules")):
             try:
                 # Get page image
-                page_image = page.page_image
+                page_image = page.get_image(highres=True)
                 if page_image is None:
                     print(f"Warning: No image available for page {page_idx}")
-                    results.append({'molecules': [], 'tables': []})
+                    results.append({'page_idx': page_idx, 'molecules': [], 'tables': []})
                     continue
                 
                 # Convert to PIL Image if needed
@@ -272,88 +272,108 @@ class MoleculeLayoutBuilder(BaseBuilder):
                     else:
                         page_image = Image.fromarray(page_image)
                 
-                # Molecule detection
-                molecules = []
-                if self.processor_config.get('with_mol_detect', True):
-                    # 根据真实的moldect_with_test_augment方法，返回格式为：
-                    # [
-                    #   {
-                    #      'mol_box': (x1, y1, x2, y2),  # tuple格式，不是list
-                    #      'label_box': [(x1, y1, x2, y2), ...] 或 None  # 可选的标签框列表
-                    #    }
-                    # ]
-                    mol_results = self.processor.moldect_with_test_augment(
+                # Use _prediction_from_pdf method for comprehensive detection
+                # This method handles both molecule and table detection in one call
+                
+                # Set up parameters for _prediction_from_pdf
+                with_mol_detect = self.processor_config.get('with_mol_detect', True)
+                with_table_detect = self.processor_config.get('with_table_detect', True)
+                
+                if with_mol_detect or with_table_detect:
+                    # Call _prediction_from_pdf with image input
+                    # Returns: total_result_dict, total_table_result_dict (if with_table=True)
+                    # or just total_result_dict (if with_table=False)
+                    prediction_result = self.processor._prediction_from_pdf(
                         image=page_image,
-                        moldetect_model=self.processor.moldetect_model,  # 使用内部初始化的模型
-                        offset_x=0,
-                        offset_y=0,
-                        usr_tta=self.processor_config.get('use_tta', True),
-                        coref=self.processor_config.get('coref', True),
-                        use_ocr=False,
-                        with_padding=False,
-                        dubug=self.processor_config.get('debug', False)
+                        page_idx_list=[page_idx + 1],  # _prediction_from_pdf expects 1-based page indices
+                        with_tta=True,
+                        with_layout_parser=True,
+                        use_coref=True,
+                        use_ocr=True,
+                        debug=False,
+                        with_molscribe=True,
+                        with_table=True,
+                        with_ocr=False,
+                        with_html=False,
+                        with_expand_mol=False,
+                        return_realative_coordinates=True,
+                        quick_prediction=False,
+                        mode='auto',
+                        osd_detect=False,
+                        return_table_html=False
                     )
+
+                    # Parse the result based on return type
+                    if with_table_detect:
+                        # Returns (total_result_dict, total_table_result_dict)
+                        if isinstance(prediction_result, tuple) and len(prediction_result) >= 2:
+                            total_result_dict, total_table_result_dict = prediction_result[:2]
+                        else:
+                            total_result_dict = prediction_result
+                            total_table_result_dict = {}
+                    else:
+                        # Returns just total_result_dict
+                        total_result_dict = prediction_result
+                        total_table_result_dict = {}
                     
                     # Process molecule results
-                    for mol_result in mol_results:
-                        if 'mol_box' in mol_result:
-                            mol_box = mol_result['mol_box']
-                            # Convert tuple to list format
-                            bbox = [mol_box[0], mol_box[1], mol_box[2], mol_box[3]]
-                            
-                            # 获取标签框信息（可选）
-                            label_boxes = mol_result.get('label_box', [])
-                            
-                            molecules.append({
-                                'bbox': bbox,
-                                'confidence': 0.9,  # 默认置信度，真实API没有直接返回confidence
-                                'data': {
-                                    'mol_box': mol_box,
-                                    'label_box': label_boxes,
-                                    'smiles': 'detected_molecule',  # 这里应该用真实的SMILES，如果有的话
-                                    'mock': False
-                                }
-                            })
-                
-                # Table detection  
-                tables = []
-                if self.processor_config.get('with_table_detect', True):
-                    # 根据真实的single_page_table_detection方法，返回格式为：
-                    # (extracted_tables, tables_layout)
-                    # 其中 tables_layout 是 TextBlock 对象列表，每个对象有：
-                    # - block.x_1, block.y_1, block.x_2, block.y_2 (坐标)
-                    # - score (置信度)
-                    # - type (类型，应该是"Table")
-                    extracted_tables, tables_layout = self.processor.single_page_table_detection(page_image)
-                    
-                    # Process table results from tables_layout
-                    for table_block in tables_layout:
-                        try:
-                            # 从TextBlock对象提取坐标
-                            bbox = [
-                                table_block.block.x_1,
-                                table_block.block.y_1,
-                                table_block.block.x_2,
-                                table_block.block.y_2
-                            ]
-                            
-                            confidence = getattr(table_block, 'score', 0.9)
-                            
-                            tables.append({
-                                'bbox': bbox,
-                                'confidence': confidence,
-                                'data': {
+                    molecules = []
+                    page_key = page_idx + 1  # _prediction_from_pdf uses 1-based page indices
+                    if page_key in total_result_dict:
+                        for mol_result in total_result_dict[page_key]:
+                            if 'mol_box' in mol_result:
+                                mol_box = mol_result['mol_box']
+                                # Convert tuple to list format
+                                bbox = [mol_box[0], mol_box[1], mol_box[2], mol_box[3]]
+                                
+                                # Extract additional data from _prediction_from_pdf result
+                                smiles = mol_result.get('post_SMILES', mol_result.get('Cano_SMILES', 'detected_molecule'))
+                                molblock = mol_result.get('post_molblock', '')
+                                
+                                molecules.append({
                                     'bbox': bbox,
-                                    'table_type': 'molecule_table',
-                                    'html_content': '<table><tr><td>Molecular Data Table</td></tr></table>',  # 默认HTML，真实使用时需要OCR处理
-                                    'format': 'html',
-                                    'mock': False,
-                                    'source': 'yolo_detection'
-                                }
-                            })
-                        except Exception as e:
-                            print(f"Warning: Failed to process table block: {e}")
-                            continue
+                                    'confidence': 0.9,  # Default confidence
+                                    'data': {
+                                        'mol_box': mol_box,
+                                        'label_box': mol_result.get('label_box_list', []),
+                                        'smiles': smiles,
+                                        'molblock': molblock,
+                                        'assigned_idx': mol_result.get('assigned_idx', ''),
+                                        'state': mol_result.get('state', 'unknown'),
+                                        'mock': False
+                                    }
+                                })
+                    
+                    # Process table results
+                    tables = []
+                    if with_table_detect and page_key in total_table_result_dict:
+                        for table_result in total_table_result_dict[page_key]:
+                            if table_result['src'] and table_result['src'].bbox:
+                                
+                                ori_bbox = table_result['src'].bbox
+                                bbox = [ori_bbox.x1, ori_bbox.y1, ori_bbox.x2, ori_bbox.y2]
+                                
+                                # Extract HTML content if available
+                                html_content = table_result.get('html', '<table><tr><td>Molecular Data Table</td></tr></table>')
+                                
+                                tables.append({
+                                    'bbox': bbox,
+                                    'confidence': table_result.get('confidence', 0.9),
+                                    'data': {
+                                        'bbox': bbox,
+                                        'table_type': 'molecule_table',
+                                        'html_content': html_content,
+                                        'dataframe': table_result.get('dataframe', None),
+                                        'has_Rgroup': table_result.get('has_Rgroup', False),
+                                        'format': 'html',
+                                        'mock': False,
+                                        'source': 'prediction_from_pdf'
+                                    }
+                                })
+                
+                else:
+                    molecules = []
+                    tables = []
                 
                 results.append({
                     'page_idx': page_idx,
@@ -361,7 +381,10 @@ class MoleculeLayoutBuilder(BaseBuilder):
                     'tables': tables
                 })
                 
+                print(f"📄 页面 {page_idx + 1}: 检测到 {len(molecules)} 个分子, {len(tables)} 个分子表格")
+                
             except Exception as e:
+                traceback.print_exc()
                 print(f"Error detecting molecules/tables on page {page_idx}: {e}")
                 results.append({'page_idx': page_idx, 'molecules': [], 'tables': []})
         
@@ -384,11 +407,9 @@ class MoleculeLayoutBuilder(BaseBuilder):
             pages: List of page groups to modify
             detection_results: Detection results from img2mol or mock data
         """
-        print('merge_molecule_blocks_to_pages', detection_results)
         for page_result in detection_results:
             page_idx = page_result.get('page_idx', 0)
             if page_idx >= len(pages):
-                print('page_idx', page_idx)
                 continue
                 
             page = pages[page_idx]
@@ -420,7 +441,6 @@ class MoleculeLayoutBuilder(BaseBuilder):
                     structure_data=structure_data,
                     confidence=molecule_detection.get('confidence', 1.0)
                 )
-                print('append!!')
                 new_blocks.append(mol_block)
             
             # Process table detections  
@@ -451,11 +471,9 @@ class MoleculeLayoutBuilder(BaseBuilder):
                 new_blocks.append(mol_table_block)
             
             if new_blocks:
-                print('new_blocks', new_blocks)
                 # Replace overlapping blocks for molecules (any block type with high overlap)
                 molecule_blocks = [b for b in new_blocks if isinstance(b, Molecule)]
                 if molecule_blocks:
-                    print('molecule_blocks', molecule_blocks)
                     self._replace_overlapping_blocks(
                         page, 
                         molecule_blocks, 
