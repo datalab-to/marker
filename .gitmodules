@@ -1,3 +1,3 @@
 [submodule "img2mol/clean_img2smiles"]
 	path = img2mol/clean_img2smiles
-	url = git@github.com:carbonsilicon-ai/clean_img2smiles.git
+	url = https://github.com/carbonsilicon-ai/clean_img2smiles.git

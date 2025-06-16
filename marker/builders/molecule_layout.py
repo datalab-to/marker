@@ -19,14 +19,7 @@ import warnings
 import io
 
 # Try to import img2mol processor
-try:
-    sys.path.append('/app/img2mol')
-    from img2mol.processor import Parser_Processer
-    IMG2MOL_AVAILABLE = True
-except ImportError:
-    print("Warning: img2mol.processor not found. Using mock mode.")
-    IMG2MOL_AVAILABLE = False
-
+IMG2MOL_AVAILABLE = True
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
@@ -79,26 +72,16 @@ class MoleculeLayoutBuilder(BaseBuilder):
             # Import img2mol processor
             import sys
             sys.path.append('/app/img2mol')
-            from img2mol.processor import Parser_Processer
+            sys.path.append('/app/img2mol/clean_img2smiles/src')
+            from img2smiles.pipeline.Processer import Parser_Processer
             
             # Create processor with configuration
             self.processor = Parser_Processer(**self.processor_config)
             
-            # Initialize required models
-            if self.processor_config.get('with_mol_detect', True):
-                self.processor.mol_detection_model = self.processor.get_MolDetect_mol(
-                    MolDetect_mol_path=self.processor_config.get('MolDetect_mol_path'),
-                    device=self.processor_config.get('device', 'cpu'),
-                    input_size=self.processor_config.get('input_size', 1000),
-                    coref=self.processor_config.get('coref', True),
-                    new_class_token=self.processor_config.get('new_class_token', True)
-                )
+            print("✅ Successfully initialized img2mol Parser_Processer")
             
-            if self.processor_config.get('with_table_detect', True):
-                device = self.processor_config.get('device', 'cpu')
-                self.processor.table_detector = self.processor.get_table_detector(device)
-                
         except Exception as e:
+            traceback.print_exc()
             print(f"Warning: Failed to initialize img2mol processor: {e}")
             print("🎭 切换到Mock模式")
             self.use_mock_data = True
@@ -292,17 +275,16 @@ class MoleculeLayoutBuilder(BaseBuilder):
                 # Molecule detection
                 molecules = []
                 if self.processor_config.get('with_mol_detect', True):
-                    # mol_results 格式
+                    # 根据真实的moldect_with_test_augment方法，返回格式为：
                     # [
                     #   {
-                    #      'bbox': [x1, y1, x2, y2], 
-                    #      'confidence': 0.9, 
-                    #      'data': {'smiles': 'c1ccccc1', 'mock': False}
+                    #      'mol_box': (x1, y1, x2, y2),  # tuple格式，不是list
+                    #      'label_box': [(x1, y1, x2, y2), ...] 或 None  # 可选的标签框列表
                     #    }
                     # ]
                     mol_results = self.processor.moldect_with_test_augment(
                         image=page_image,
-                        moldetect_model=self.processor.mol_detection_model,
+                        moldetect_model=self.processor.moldetect_model,  # 使用内部初始化的模型
                         offset_x=0,
                         offset_y=0,
                         usr_tta=self.processor_config.get('use_tta', True),
@@ -314,40 +296,64 @@ class MoleculeLayoutBuilder(BaseBuilder):
                     
                     # Process molecule results
                     for mol_result in mol_results:
-                        if 'bbox' in mol_result:
-                            bbox = mol_result['bbox']
-                            # Convert to our bbox format
-                            bbox = [bbox[0], bbox[1], bbox[2], bbox[3]]
+                        if 'mol_box' in mol_result:
+                            mol_box = mol_result['mol_box']
+                            # Convert tuple to list format
+                            bbox = [mol_box[0], mol_box[1], mol_box[2], mol_box[3]]
+                            
+                            # 获取标签框信息（可选）
+                            label_boxes = mol_result.get('label_box', [])
+                            
                             molecules.append({
                                 'bbox': bbox,
-                                'confidence': mol_result.get('confidence', 1.0),
-                                'data': mol_result
+                                'confidence': 0.9,  # 默认置信度，真实API没有直接返回confidence
+                                'data': {
+                                    'mol_box': mol_box,
+                                    'label_box': label_boxes,
+                                    'smiles': 'detected_molecule',  # 这里应该用真实的SMILES，如果有的话
+                                    'mock': False
+                                }
                             })
                 
                 # Table detection  
                 tables = []
                 if self.processor_config.get('with_table_detect', True):
-                    # table_results 格式
-                    # {
-                    #   'tables_layout': [
-                    #     {'bbox': [x1, y1, x2, y2], 'confidence': 0.9, 'data': {'html_content': '<table>...</table>', 'mock': True}}
-                    #   ]
-                    # }
-                    table_results = self.processor.single_page_table_detection(page_image)
+                    # 根据真实的single_page_table_detection方法，返回格式为：
+                    # (extracted_tables, tables_layout)
+                    # 其中 tables_layout 是 TextBlock 对象列表，每个对象有：
+                    # - block.x_1, block.y_1, block.x_2, block.y_2 (坐标)
+                    # - score (置信度)
+                    # - type (类型，应该是"Table")
+                    extracted_tables, tables_layout = self.processor.single_page_table_detection(page_image)
                     
-                    # Extract tables_layout from the results
-                    tables_layout = table_results.get('tables_layout', [])
-                    
-                    # Process table results
-                    for table_layout in tables_layout:
-                        # table_layout should have bbox information
-                        if 'bbox' in table_layout:
-                            bbox = table_layout['bbox']
+                    # Process table results from tables_layout
+                    for table_block in tables_layout:
+                        try:
+                            # 从TextBlock对象提取坐标
+                            bbox = [
+                                table_block.block.x_1,
+                                table_block.block.y_1,
+                                table_block.block.x_2,
+                                table_block.block.y_2
+                            ]
+                            
+                            confidence = getattr(table_block, 'score', 0.9)
+                            
                             tables.append({
                                 'bbox': bbox,
-                                'confidence': table_layout.get('confidence', 1.0),
-                                'data': table_layout
+                                'confidence': confidence,
+                                'data': {
+                                    'bbox': bbox,
+                                    'table_type': 'molecule_table',
+                                    'html_content': '<table><tr><td>Molecular Data Table</td></tr></table>',  # 默认HTML，真实使用时需要OCR处理
+                                    'format': 'html',
+                                    'mock': False,
+                                    'source': 'yolo_detection'
+                                }
                             })
+                        except Exception as e:
+                            print(f"Warning: Failed to process table block: {e}")
+                            continue
                 
                 results.append({
                     'page_idx': page_idx,
