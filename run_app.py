@@ -101,6 +101,7 @@ def document_proc(
         file_type = params.get("file_type", "pdf")
         docId = params.get("docId", "")
         callback_url = params.get("callback_url", "")
+        mol_detect = params.get("mol_detect", False)
         print('callback_url', callback_url, flush=True)
         try:
             print('start>>>extraction', flush=True)
@@ -111,7 +112,8 @@ def document_proc(
                     file, 
                     callback_url=callback_url,
                     docId=docId,
-                    file_type=file_type
+                    file_type=file_type,
+                    mol_detect=mol_detect
                 )
             elif file_type == "docx":
                 extraction_outputs = extraction_proc.parse_docx(file)
@@ -188,6 +190,7 @@ async def document_extract(request):
         docId = form.get("docId", "")
         file_type = form.get("file_type", "pdf")  # pdf, docx, pptx, jpg, png, jpeg
         callback_url = form.get("callback_url", "")
+        mol_detect = form.get("mol_detect", False)
 
         if not docId:
             return do_response(
@@ -214,6 +217,7 @@ async def document_extract(request):
             "args": args,
             "docId": docId,
             "callback_url": callback_url,
+            "mol_detect": mol_detect,
         }
 
         params_queue.put(params)

@@ -104,7 +104,8 @@ class PdfConverter(BaseConverter):
         llm_service: str | None = None,
         config=None,
         callback_url: str | None = None,
-        docId: str | None = None
+        docId: str | None = None,
+        mol_detect: bool = False
     ):
         super().__init__(config)
 
@@ -146,6 +147,7 @@ class PdfConverter(BaseConverter):
         
         # 分子layout builder
         self.molecule_layout_builder = None
+        self.use_molecule_detection = mol_detect
         if config.get("use_molecule_detection", False) or self.use_molecule_detection:
             # img2mol processor的配置
             processor_config = artifact_dict.get("processor_config", {})
