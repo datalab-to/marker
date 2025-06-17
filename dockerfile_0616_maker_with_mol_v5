@@ -1,0 +1,18 @@
+FROM marker_with_mol:v4
+
+RUN set -xe 
+# 设置非交互式环境变量（避免 apt 和 pip 的交互提示）
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on
+
+# 安装系统依赖（poppler-utils）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends poppler-utils && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get install poppler-utils
+RUN /opt/conda/envs/myenv/bin/pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu118
+RUN /opt/conda/envs/myenv/bin/pip install onnx==1.16.1 onnxruntime==1.16.3 onnxruntime-gpu==1.16.3 -i https://pypi.tuna.tsinghua.edu.cn/simple/
