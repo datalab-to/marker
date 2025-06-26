@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Sequence, Union
 
 from pydantic import BaseModel
 
@@ -23,7 +23,7 @@ class TocItem(BaseModel):
 
 
 class Document(BaseModel):
-    filepath: str
+    filepath: Union[str | bytes]
     pages: List[PageGroup]
     block_type: BlockTypes = BlockTypes.Document
     table_of_contents: List[TocItem] | None = None
