@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-<<<<<<< HEAD
 from typing import List, Optional, Sequence
-=======
-from typing import List, Sequence, Optional
->>>>>>> master
 
 from pydantic import BaseModel
 
