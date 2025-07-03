@@ -8,7 +8,7 @@ def test_pdf_provider(doc_provider):
     assert doc_provider.get_images([0], 96)[0].size == (816, 1056)
 
     page_lines = doc_provider.get_page_lines(0)
-    assert len(page_lines) == 87
+    assert len(page_lines) == 85
 
     spans = page_lines[0].spans
     assert len(spans) == 2

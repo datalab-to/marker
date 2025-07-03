@@ -1,89 +1,20 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 
-from pydantic import create_model, BaseModel, Field, ValidationError
-from typing import Annotated, Type, Optional, Any, Dict
-from enum import Enum
+from pydantic import BaseModel
+from typing import Annotated, Optional, List
 
-from marker.extractors import BaseExtractor, ExtractionResult
-from marker.schema.document import Document
-from marker.schema.groups.page import PageGroup
+from tqdm import tqdm
 
+from marker.extractors import BaseExtractor
+from marker.logger import get_logger
 
-def make_all_optional(schema: Dict[str, Any]) -> Dict[str, Any]:
-    if "properties" in schema:
-        for prop_schema in schema["properties"].values():
-            if "required" in schema:
-                schema["required"] = []
-
-            if prop_schema.get("type") == "object":
-                make_all_optional(prop_schema)
-
-            elif prop_schema.get("type") == "array" and "items" in prop_schema:
-                if prop_schema["items"].get("type") == "object":
-                    make_all_optional(prop_schema["items"])
-
-    if "definitions" in schema:
-        for def_schema in schema["definitions"].values():
-            make_all_optional(def_schema)
-
-    if "$defs" in schema:
-        for def_schema in schema["$defs"].values():
-            make_all_optional(def_schema)
-
-    return schema
+logger = get_logger()
 
 
-def json_schema_to_base_model(schema: dict[str, Any]) -> Type[BaseModel]:
-    type_mapping: dict[str, type] = {
-        "string": str,
-        "integer": int,
-        "number": float,
-        "boolean": bool,
-        "array": list,
-        "object": dict,
-    }
-
-    properties = schema.get("properties", {})
-    required_fields = schema.get("required", [])
-    model_fields = {}
-
-    def process_field(field_name: str, field_props: dict[str, Any]) -> tuple:
-        json_type = field_props.get("type", "string")
-        enum_values = field_props.get("enum")
-
-        if enum_values:
-            enum_name: str = f"{field_name.capitalize()}Enum"
-            field_type = Enum(enum_name, {v: v for v in enum_values})
-        elif json_type == "object" and "properties" in field_props:
-            field_type = json_schema_to_base_model(field_props)
-        elif json_type == "array" and "items" in field_props:
-            item_props = field_props["items"]
-            if item_props.get("type") == "object":
-                item_type: type[BaseModel] = json_schema_to_base_model(item_props)
-            else:
-                item_type: type = type_mapping.get(item_props.get("type"), Any)
-            field_type = list[item_type]
-        else:
-            field_type = type_mapping.get(json_type, Any)
-
-        # Handle default values and optionality
-        default_value = field_props.get("default", ...)
-        nullable = field_props.get("nullable", False)
-        description = field_props.get("title", "")
-
-        if nullable:
-            field_type = Optional[field_type]
-
-        if field_name not in required_fields:
-            default_value = field_props.get("default", None)
-
-        return field_type, Field(default_value, description=description)
-
-    # Process each field
-    for field_name, field_props in properties.items():
-        model_fields[field_name] = process_field(field_name, field_props)
-
-    return create_model(schema.get("title", "OptionalPageModel"), **model_fields)
+class PageExtractionSchema(BaseModel):
+    description: str
+    detailed_notes: str
 
 
 class PageExtractor(BaseExtractor):
@@ -91,35 +22,32 @@ class PageExtractor(BaseExtractor):
     An extractor that pulls data from a single page.
     """
 
-    max_concurrency: Annotated[
-        int,
-        "The maximum number of concurrent requests to make to the Gemini model.",
+    extraction_page_chunk_size: Annotated[
+        int, "The number of pages to chunk together for extraction."
     ] = 3
-    disable_tqdm: Annotated[
-        bool,
-        "Whether to disable the tqdm progress bar.",
-    ] = False
+
     page_schema: Annotated[
         str,
         "The JSON schema to be extracted from the page.",
     ] = ""
 
-    page_extraction_prompt = """You are an expert document analyst who reads documents and pulls data out in JSON format.
-You will receive an image of a document page, the markdown representation of the page, and a JSON schema in pydantic format.
-Your task is to extract the values in the schema from the page, and return them.  If a value in the schema does not exist on the page, return null to reflect that.
+    page_extraction_prompt = """You are an expert document analyst who reads documents and pulls data out in JSON format. You will receive the markdown representation of a document page, and a JSON schema that we want to extract from the document. Your task is to write detailed notes on this page, so that when you look at all your notes from across the document, you can fill in the schema.
+    
+Some notes:
+- The schema may contain a single object to extract from the entire document, or an array of objects. 
+- The schema may contain nested objects, arrays, and other complex structures.
 
 Some guidelines:
-- If the schema has a field that is not present in the image, return null for that field.
-- The confidence score should reflect both how confident you feel that the value in the schema exists in the image, and that you extracted the right value.
+- Write very thorough notes, and include specific JSON snippets that can be extracted from the page.
+- You may need information from prior or subsequent pages to fully fill in the schema, so make sure to write detailed notes that will let you join entities across pages later on.
+- Estimate your confidence in the values you extract, so you can reconstruct the JSON later when you only have your notes.
+- Some tables and other data structures may continue on a subsequent page, so make sure to store the positions that data comes from where appropriate.
 
 **Instructions:**
-1. Carefully examine the provided page image.
-2. Analyze the markdown representation of the page.
-3. Analyze the JSON schema.
-4. Write a short description of the fields in the schema, and the associated values in the image.
-5. Extract the data in the schema that can be found in the image and output the data in JSON format.
-6. Output an existence confidence score 1 to 5, where 1 is very low confidence that the values exist on the page, and 5 is very high confidence that the values exist on the page.
-7. Output a value confidence score from 1 to 5, where 1 is very low confidence that the values are correct, and 5 is very high confidence that the values are correct.
+1. Analyze the provided markdown representation of the page.
+2. Analyze the JSON schema.
+3. Write a short description of the fields in the schema, and the associated values in the markdown.
+4. Write detailed notes on the page, including any values that can be extracted from the markdown.  Include snippets of JSON that can be extracted from the page where possible.
 
 **Example:**
 Input:
@@ -141,87 +69,96 @@ Schema
 Output:
 
 Description: The schema has a list of cars, each with a make, sales, and color. The image and markdown contain a table with 2 cars: Honda with 100 sales and Toyota with 200 sales. The color is not present in the table.
-
+Detailed Notes: On this page, I see a table with car makes and sales. The makes are Honda and Toyota, with sales of 100 and 200 respectively. The color is not present in the table, so I will leave it blank in the JSON.  That information may be present on another page.  Some JSON snippets I may find useful later are:
 ```json
 {
-    "cars": [
-        {
-            "make": "Honda",
-            "sales": 100,
-            "color": null
-        },
-        {
-            "make": "Toyota",
-            "sales": 200,
-            "color": null
-        }
-    ]
+    "make": "Honda",
+    "sales": 100,
+}
+```
+```json
+{
+    "make": "Toyota",
+    "sales": 200,
 }
 ```
 
-Existence confidence: 5
-Value confidence: 5
+Honda is the first row in the table, and Toyota is the second row.  Make is the first column, and sales is the second.
 
 **Input:**
 
 Markdown
 ```markdown
-{page_md}
+{{page_md}}
 ```
 
 Schema
 ```json
-{schema}
+{{schema}}
 ```
 """
 
-    def __call__(
-        self, document: Document, page: PageGroup, page_markdown: str, **kwargs
-    ) -> Optional[ExtractionResult]:
-        page_image = self.extract_image(document, page)
-        if not self.page_schema:
-            raise ValueError(
-                "Page schema must be defined for structured extraction to work."
-            )
-        page_schema = json.loads(self.page_schema)
-        optional_schema = make_all_optional(page_schema)
+    def chunk_page_markdown(self, page_markdown: List[str]) -> List[str]:
+        """
+        Chunk the page markdown into smaller pieces for processing.
+        """
 
+        chunks = []
+        for i in range(0, len(page_markdown), self.extraction_page_chunk_size):
+            chunk = page_markdown[i : i + self.extraction_page_chunk_size]
+            chunks.append("\n\n".join(chunk))
+
+        return chunks
+
+    def inference_single_chunk(
+        self, page_markdown: str
+    ) -> Optional[PageExtractionSchema]:
         prompt = self.page_extraction_prompt.replace(
-            "{page_md}", page_markdown
-        ).replace("{schema}", json.dumps(optional_schema))
-        response = self.llm_service(prompt, page_image, page, PageExtractionSchema)
+            "{{page_md}}", page_markdown
+        ).replace("{{schema}}", json.dumps(self.page_schema))
+        response = self.llm_service(prompt, None, None, PageExtractionSchema)
+        logger.debug(f"Page extraction response: {response}")
 
         if not response or any(
             [
                 key not in response
                 for key in [
-                    "extracted_json",
-                    "existence_confidence",
-                    "value_confidence",
+                    "description",
+                    "detailed_notes",
                 ]
             ]
         ):
-            page.update_metadata(llm_error_count=1)
             return None
 
-        extracted_json = response["extracted_json"]
-
-        OptionalPageModel = json_schema_to_base_model(optional_schema)
-        try:
-            OptionalPageModel.model_validate_json(extracted_json)
-        except ValidationError as e:
-            print(f"Validation error with extracted data: {e}")
-            return None
-
-        return ExtractionResult(
-            extracted_data=json.loads(extracted_json),
-            existence_confidence=response["existence_confidence"],
-            value_confidence=response["value_confidence"],
+        return PageExtractionSchema(
+            description=response["description"],
+            detailed_notes=response["detailed_notes"],
         )
 
+    def __call__(
+        self,
+        page_markdown: List[str],
+        **kwargs,
+    ) -> List[PageExtractionSchema]:
+        if not self.page_schema:
+            raise ValueError(
+                "Page schema must be defined for structured extraction to work."
+            )
 
-class PageExtractionSchema(BaseModel):
-    description: str
-    extracted_json: str
-    existence_confidence: int
-    value_confidence: int
+        chunks = self.chunk_page_markdown(page_markdown)
+        results = []
+        pbar = tqdm(
+            desc="Running page extraction",
+            disable=self.disable_tqdm,
+            total=len(chunks),
+        )
+
+        with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
+            for future in [
+                executor.submit(self.inference_single_chunk, chunk) for chunk in chunks
+            ]:
+                results.append(future.result())  # Raise exceptions if any occurred
+                pbar.update(1)
+
+        pbar.close()
+        return results

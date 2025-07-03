@@ -1,4 +1,3 @@
-from functools import cache
 from typing import Tuple, List
 
 from marker.builders.document import DocumentBuilder
@@ -23,7 +22,11 @@ class TableConverter(PdfConverter):
         LLMFormProcessor,
         LLMComplexRegionProcessor,
     )
-    converter_block_types: List[BlockTypes] = (BlockTypes.Table, BlockTypes.Form, BlockTypes.TableOfContents)
+    converter_block_types: List[BlockTypes] = (
+        BlockTypes.Table,
+        BlockTypes.Form,
+        BlockTypes.TableOfContents,
+    )
 
     def build_document(self, filepath: str):
         provider_cls = provider_from_filepath(filepath)
@@ -37,7 +40,9 @@ class TableConverter(PdfConverter):
         document = document_builder(provider, layout_builder, line_builder, ocr_builder)
 
         for page in document.pages:
-            page.structure = [p for p in page.structure if p.block_type in self.converter_block_types]
+            page.structure = [
+                p for p in page.structure if p.block_type in self.converter_block_types
+            ]
 
         for processor in self.processor_list:
             processor(document)
@@ -46,5 +51,7 @@ class TableConverter(PdfConverter):
 
     def __call__(self, filepath: str):
         document = self.build_document(filepath)
+        self.page_count = len(document.pages)
+
         renderer = self.resolve_dependencies(self.renderer)
         return renderer(document)

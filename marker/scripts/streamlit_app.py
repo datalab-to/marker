@@ -94,7 +94,7 @@ page_range = st.sidebar.text_input(
     value=f"{page_number}-{page_number}",
 )
 output_format = st.sidebar.selectbox(
-    "Output format", ["markdown", "json", "html"], index=0
+    "Output format", ["markdown", "json", "html", "chunks"], index=0
 )
 run_marker = st.sidebar.button("Run Marker")
 
@@ -155,6 +155,8 @@ with col2:
         st.json(text)
     elif output_format == "html":
         st.html(text)
+    elif output_format == "chunks":
+        st.json(text)
 
 if debug:
     with col1:

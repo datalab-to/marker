@@ -1,8 +1,6 @@
-import base64
 import json
 import time
-from io import BytesIO
-from typing import List, Annotated, Union, T
+from typing import List, Annotated, T
 
 import PIL
 from PIL import Image
@@ -26,17 +24,7 @@ class ClaudeService(BaseService):
         int, "The maximum number of tokens to use for a single Claude request."
     ] = 8192
 
-    def img_to_base64(self, img: PIL.Image.Image):
-        image_bytes = BytesIO()
-        img.save(image_bytes, format="WEBP")
-        return base64.b64encode(image_bytes.getvalue()).decode("utf-8")
-
-    def prepare_images(
-        self, images: Union[Image.Image, List[Image.Image]]
-    ) -> List[dict]:
-        if isinstance(images, Image.Image):
-            images = [images]
-
+    def process_images(self, images: List[Image.Image]) -> List[dict]:
         return [
             {
                 "type": "image",
@@ -78,8 +66,8 @@ class ClaudeService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image],
-        block: Block,
+        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
@@ -89,9 +77,6 @@ class ClaudeService(BaseService):
 
         if timeout is None:
             timeout = self.timeout
-
-        if not isinstance(image, list):
-            image = [image]
 
         schema_example = response_schema.model_json_schema()
         system_prompt = f"""
@@ -103,7 +88,7 @@ Respond only with the JSON schema, nothing else.  Do not include ```json, ```,  
 """.strip()
 
         client = self.get_client()
-        image_data = self.prepare_images(image)
+        image_data = self.format_image_for_llm(image)
 
         messages = [
             {
@@ -115,8 +100,8 @@ Respond only with the JSON schema, nothing else.  Do not include ```json, ```,  
             }
         ]
 
-        tries = 0
-        while tries < max_retries:
+        total_tries = max_retries + 1
+        for tries in range(1, total_tries + 1):
             try:
                 response = client.messages.create(
                     system=system_prompt,
@@ -130,12 +115,18 @@ Respond only with the JSON schema, nothing else.  Do not include ```json, ```,  
                 return self.validate_response(response_text, response_schema)
             except (RateLimitError, APITimeoutError) as e:
                 # Rate limit exceeded
-                tries += 1
-                wait_time = tries * self.retry_wait_time
-                logger.warning(
-                    f"Rate limit error: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{max_retries})"
-                )
-                time.sleep(wait_time)
+                if tries == total_tries:
+                    # Last attempt failed. Give up
+                    logger.error(
+                        f"Rate limit error: {e}. Max retries reached. Giving up. (Attempt {tries}/{total_tries})",
+                    )
+                    break
+                else:
+                    wait_time = tries * self.retry_wait_time
+                    logger.warning(
+                        f"Rate limit error: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
+                    )
+                    time.sleep(wait_time)
             except Exception as e:
                 logger.error(f"Error during Claude API call: {e}")
                 break

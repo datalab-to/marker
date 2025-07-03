@@ -1,8 +1,6 @@
-import base64
 import json
 import time
-from io import BytesIO
-from typing import Annotated, List, Union
+from typing import Annotated, List
 
 import openai
 import PIL
@@ -27,15 +25,23 @@ class OpenAIService(BaseService):
     openai_api_key: Annotated[
         str, "The API key to use for the OpenAI-like service."
     ] = None
+    openai_image_format: Annotated[
+        str,
+        "The image format to use for the OpenAI-like service. Use 'png' for better compatability",
+    ] = "webp"
 
-    def image_to_base64(self, image: PIL.Image.Image):
-        image_bytes = BytesIO()
-        image.save(image_bytes, format="WEBP")
-        return base64.b64encode(image_bytes.getvalue()).decode("utf-8")
+    def process_images(self, images: List[Image.Image]) -> List[dict]:
+        """
+        Generate the base-64 encoded message to send to an
+        openAI-compatabile multimodal model.
 
-    def prepare_images(
-        self, images: Union[Image.Image, List[Image.Image]]
-    ) -> List[dict]:
+        Args:
+            images: Image or list of PIL images to include
+            format: Format to use for the image; use "png" for better compatability.
+
+        Returns:
+            A list of OpenAI-compatbile multimodal messages containing the base64-encoded images.
+        """
         if isinstance(images, Image.Image):
             images = [images]
 
@@ -43,8 +49,8 @@ class OpenAIService(BaseService):
             {
                 "type": "image_url",
                 "image_url": {
-                    "url": "data:image/webp;base64,{}".format(
-                        self.image_to_base64(img)
+                    "url": "data:image/{};base64,{}".format(
+                        self.openai_image_format, self.img_to_base64(img)
                     ),
                 },
             }
@@ -54,8 +60,8 @@ class OpenAIService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image],
-        block: Block,
+        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
@@ -66,11 +72,8 @@ class OpenAIService(BaseService):
         if timeout is None:
             timeout = self.timeout
 
-        if not isinstance(image, list):
-            image = [image]
-
         client = self.get_client()
-        image_data = self.prepare_images(image)
+        image_data = self.format_image_for_llm(image)
 
         messages = [
             {
@@ -82,13 +85,13 @@ class OpenAIService(BaseService):
             }
         ]
 
-        tries = 0
-        while tries < max_retries:
+        total_tries = max_retries + 1
+        for tries in range(1, total_tries + 1):
             try:
                 response = client.beta.chat.completions.parse(
                     extra_headers={
                         "X-Title": "Marker",
-                        "HTTP-Referer": "https://github.com/VikParuchuri/marker",
+                        "HTTP-Referer": "https://github.com/datalab-to/marker",
                     },
                     model=self.openai_model,
                     messages=messages,
@@ -97,16 +100,25 @@ class OpenAIService(BaseService):
                 )
                 response_text = response.choices[0].message.content
                 total_tokens = response.usage.total_tokens
-                block.update_metadata(llm_tokens_used=total_tokens, llm_request_count=1)
+                if block:
+                    block.update_metadata(
+                        llm_tokens_used=total_tokens, llm_request_count=1
+                    )
                 return json.loads(response_text)
             except (APITimeoutError, RateLimitError) as e:
                 # Rate limit exceeded
-                tries += 1
-                wait_time = tries * self.retry_wait_time
-                logger.warning(
-                    f"Rate limit error: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{max_retries})"
-                )
-                time.sleep(wait_time)
+                if tries == total_tries:
+                    # Last attempt failed. Give up
+                    logger.error(
+                        f"Rate limit error: {e}. Max retries reached. Giving up. (Attempt {tries}/{total_tries})",
+                    )
+                    break
+                else:
+                    wait_time = tries * self.retry_wait_time
+                    logger.warning(
+                        f"Rate limit error: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
+                    )
+                    time.sleep(wait_time)
             except Exception as e:
                 logger.error(f"OpenAI inference failed: {e}")
                 break

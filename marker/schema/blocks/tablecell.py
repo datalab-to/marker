@@ -18,7 +18,9 @@ class TableCell(Block):
     def text(self):
         return "\n".join(self.text_lines)
 
-    def assemble_html(self, document, child_blocks, parent_structure=None):
+    def assemble_html(
+        self, document, child_blocks, parent_structure=None, block_config=None
+    ):
         tag_cls = "th" if self.is_header else "td"
         tag = f"<{tag_cls}"
         if self.rowspan > 1:

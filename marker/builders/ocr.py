@@ -40,13 +40,21 @@ class OcrBuilder(BaseBuilder):
         List[BlockTypes],
         "Blocktypes for which contained lines are not processed by the OCR model"
         "By default, this avoids recognizing lines inside equations, figures, and pictures",
-    ] = [BlockTypes.Equation, BlockTypes.Figure, BlockTypes.FigureGroup, BlockTypes.Picture, BlockTypes.PictureGroup, BlockTypes.Table]
+    ] = [
+        BlockTypes.Equation,
+        BlockTypes.Figure,
+        BlockTypes.FigureGroup,
+        BlockTypes.Picture,
+        BlockTypes.PictureGroup,
+        BlockTypes.Table,
+    ]
     ocr_task_name: Annotated[
         str,
         "The OCR mode to use, see surya for details.  Set to 'ocr_without_boxes' for potentially better performance, at the expense of formatting.",
     ] = TaskNames.ocr_with_boxes
     keep_chars: Annotated[bool, "Keep individual characters."] = False
     disable_ocr_math: Annotated[bool, "Disable inline math recognition in OCR"] = False
+    drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
 
     def __init__(self, recognition_model: RecognitionPredictor, config=None):
         super().__init__(config)
@@ -153,6 +161,7 @@ class OcrBuilder(BaseBuilder):
             recognition_batch_size=int(self.get_recognition_batch_size()),
             sort_lines=False,
             math_mode=not self.disable_ocr_math,
+            drop_repeated_text=self.drop_repeated_text,
         )
 
         assert len(recognition_results) == len(images) == len(pages) == len(line_ids), (

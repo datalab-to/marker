@@ -84,7 +84,9 @@ class CommonParams(BaseModel):
 
 
 async def _convert_pdf(params: CommonParams):
-    assert params.output_format in ["markdown", "json", "html"], "Invalid output format"
+    assert params.output_format in ["markdown", "json", "html", "chunks"], (
+        "Invalid output format"
+    )
     try:
         options = params.model_dump()
         config_parser = ConfigParser(options)

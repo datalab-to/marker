@@ -36,6 +36,7 @@ class EquationProcessor(BaseProcessor):
         bool,
         "Whether to disable the tqdm progress bar.",
     ] = False
+    drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
 
     def __init__(self, recognition_model: RecognitionPredictor, config=None):
         super().__init__(config)
@@ -130,6 +131,7 @@ class EquationProcessor(BaseProcessor):
             task_names=["block_without_boxes"] * len(page_images),
             recognition_batch_size=self.get_batch_size(),
             sort_lines=False,
+            drop_repeated_text=self.drop_repeated_text,
         )
 
         equation_predictions = [

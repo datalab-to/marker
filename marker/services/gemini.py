@@ -1,5 +1,6 @@
 import json
 import time
+import traceback
 from io import BytesIO
 from typing import List, Annotated, Optional
 
@@ -29,11 +30,18 @@ class BaseGeminiService(BaseService):
     def get_google_client(self, timeout: int):
         raise NotImplementedError
 
+    def process_images(self, images):
+        image_parts = [
+            types.Part.from_bytes(data=self.img_to_bytes(img), mime_type="image/webp")
+            for img in images
+        ]
+        return image_parts
+
     def __call__(
         self,
         prompt: str,
-        image: Optional[PIL.Image.Image | List[PIL.Image.Image]],
-        block: Optional[Block],
+        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
@@ -45,19 +53,10 @@ class BaseGeminiService(BaseService):
             timeout = self.timeout
 
         client = self.get_google_client(timeout=timeout)
-        
-        image_parts = None
-        if image is not None:
-            if not isinstance(image, list):
-                image = [image]
+        image_parts = self.format_image_for_llm(image)
 
-            image_parts = [
-                types.Part.from_bytes(data=self.img_to_bytes(img), mime_type="image/webp")
-                for img in image
-            ]
-
-        tries = 0
-        while tries < max_retries:
+        total_tries = max_retries + 1
+        for tries in range(1, total_tries + 1):
             try:
                 # According to gemini docs, it performs better if the image is the first element
                 contents = [prompt]
@@ -76,23 +75,32 @@ class BaseGeminiService(BaseService):
                 output = responses.candidates[0].content.parts[0].text
                 total_tokens = responses.usage_metadata.total_token_count
                 if block:
-                    block.update_metadata(llm_tokens_used=total_tokens, llm_request_count=1)
+                    block.update_metadata(
+                        llm_tokens_used=total_tokens, llm_request_count=1
+                    )
                 return json.loads(output)
             except APIError as e:
                 if e.code in [429, 443, 503]:
                     # Rate limit exceeded
-                    tries += 1
-                    wait_time = tries * self.retry_wait_time
-                    logger.warning(
-                        f"APIError: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{max_retries})"
-                    )
-                    time.sleep(wait_time)
+                    if tries == total_tries:
+                        # Last attempt failed. Give up
+                        logger.error(
+                            f"APIError: {e}. Max retries reached. Giving up. (Attempt {tries}/{total_tries})",
+                        )
+                        break
+                    else:
+                        wait_time = tries * self.retry_wait_time
+                        logger.warning(
+                            f"APIError: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
+                        )
+                        time.sleep(wait_time)
                 else:
                     logger.error(f"APIError: {e}")
                     break
             except Exception as e:
                 import traceback; traceback.print_exc()
                 logger.error(f"Exception: {e}")
+                traceback.print_exc()
                 break
 
         return {}

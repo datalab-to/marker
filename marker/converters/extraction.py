@@ -1,12 +1,13 @@
-import json
 import re
+from typing import Annotated
 
 from marker.builders.document import DocumentBuilder
 from marker.builders.line import LineBuilder
 from marker.builders.ocr import OcrBuilder
 from marker.builders.structure import StructureBuilder
 from marker.converters.pdf import PdfConverter
-from marker.extractors.page import PageExtractor, json_schema_to_base_model
+from marker.extractors.document import DocumentExtractor
+from marker.extractors.page import PageExtractor
 from marker.providers.registry import provider_from_filepath
 
 from marker.renderers.extraction import ExtractionRenderer, ExtractionOutput
@@ -19,6 +20,9 @@ logger = get_logger()
 
 class ExtractionConverter(PdfConverter):
     pattern: str = r"{\d+\}-{48}\n\n"
+    existing_markdown: Annotated[
+        str, "Markdown that was already converted for extraction."
+    ] = None
 
     def build_document(self, filepath: str):
         provider_cls = provider_from_filepath(filepath)
@@ -42,21 +46,16 @@ class ExtractionConverter(PdfConverter):
         self.config["output_format"] = (
             "markdown"  # Output must be markdown for extraction
         )
-        try:
-            json_schema_to_base_model(json.loads(self.config["page_schema"]))
-        except Exception as e:
-            logger.error(f"Could not parse page schema: {e}")
-            raise ValueError(
-                "Could not parse your page schema. Please check the schema format."
-            )
+        markdown = self.existing_markdown
 
-        document, provider = self.build_document(filepath)
-        renderer = self.resolve_dependencies(MarkdownRenderer)
-        output = renderer(document)
+        if not markdown:
+            document, provider = self.build_document(filepath)
+            self.page_count = len(document.pages)
+            renderer = self.resolve_dependencies(MarkdownRenderer)
+            output = renderer(document)
+            markdown = output.markdown
 
-        output_pages = re.split(self.pattern, output.markdown)[
-            1:
-        ]  # Split output into pages
+        output_pages = re.split(self.pattern, markdown)[1:]  # Split output into pages
 
         # This needs an LLM service for extraction, this sets it in the extractor
         if not self.artifact_dict["llm_service"]:
@@ -64,14 +63,13 @@ class ExtractionConverter(PdfConverter):
                 self.default_llm_service
             )
 
-        extractor = self.resolve_dependencies(PageExtractor)
+        page_extractor = self.resolve_dependencies(PageExtractor)
+        document_extractor = self.resolve_dependencies(DocumentExtractor)
         renderer = self.resolve_dependencies(ExtractionRenderer)
 
-        pnums = provider.page_range
-        all_json = {}
-        for page, page_md, pnum in zip(document.pages, output_pages, pnums):
-            extracted_json = extractor(document, page, page_md.strip())
-            all_json[pnum] = extracted_json
+        # Inference in parallel
+        notes = page_extractor(output_pages)
+        document_output = document_extractor(notes)
 
-        merged = renderer(all_json)
+        merged = renderer(document_output, markdown)
         return merged

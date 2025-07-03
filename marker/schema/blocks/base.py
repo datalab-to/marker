@@ -19,10 +19,12 @@ class BlockMetadata(BaseModel):
     llm_tokens_used: int = 0
 
     def merge(self, model2):
-        return self.__class__(**{
-            field: getattr(self, field) + getattr(model2, field)
-            for field in self.model_fields
-        })
+        return self.__class__(
+            **{
+                field: getattr(self, field) + getattr(model2, field)
+                for field in self.model_fields
+            }
+        )
 
 
 class BlockOutput(BaseModel):
@@ -56,18 +58,23 @@ class BlockId(BaseModel):
         if isinstance(other, str):
             return str(self) == other
         else:
-            return self.page_id == other.page_id and self.block_id == other.block_id and self.block_type == other.block_type
+            return (
+                self.page_id == other.page_id
+                and self.block_id == other.block_id
+                and self.block_type == other.block_type
+            )
 
     @field_validator("block_type")
     @classmethod
     def validate_block_type(cls, v):
         from marker.schema import BlockTypes
-        if not v in BlockTypes:
+
+        if v not in BlockTypes:
             raise ValueError(f"Invalid block type: {v}")
         return v
 
     def to_path(self):
-        return str(self).replace('/', '_')
+        return str(self).replace("/", "_")
 
     @classmethod
     def from_str(cls, s: str) -> "BlockId":
@@ -97,25 +104,27 @@ class Block(BaseModel):
     block_type: Optional[BlockTypes] = None
     block_id: Optional[int] = None
     page_id: Optional[int] = None
-    text_extraction_method: Optional[Literal['pdftext', 'surya', 'gemini']] = None
-    structure: List[BlockId] | None = None  # The top-level page structure, which is the block ids in order
+    text_extraction_method: Optional[Literal["pdftext", "surya", "gemini"]] = None
+    structure: List[BlockId] | None = (
+        None  # The top-level page structure, which is the block ids in order
+    )
     ignore_for_output: bool = False  # Whether this block should be ignored in output
-    replace_output_newlines: bool = False  # Whether to replace newlines with spaces in output
-    source: Literal['layout', 'heuristics', 'processor'] = 'layout'
+    replace_output_newlines: bool = (
+        False  # Whether to replace newlines with spaces in output
+    )
+    source: Literal["layout", "heuristics", "processor"] = "layout"
     top_k: Optional[Dict[BlockTypes, float]] = None
     metadata: BlockMetadata | None = None
     lowres_image: Image.Image | None = None
     highres_image: Image.Image | None = None
-    removed: bool = False # Has block been replaced by new block?
+    removed: bool = False  # Has block been replaced by new block?
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @property
     def id(self) -> BlockId:
         return BlockId(
-            page_id=self.page_id,
-            block_id=self.block_id,
-            block_type=self.block_type
+            page_id=self.page_id, block_id=self.block_id, block_type=self.block_type
         )
 
     @classmethod
@@ -123,27 +132,39 @@ class Block(BaseModel):
         block_attrs = block.model_dump(exclude=["id", "block_id", "block_type"])
         return cls(**block_attrs)
 
-    def get_image(self, document: Document, highres: bool = False, expansion: Tuple[float, float] | None = None, remove_blocks: Sequence[BlockTypes] | None = None) -> Image.Image | None:
+    def get_image(
+        self,
+        document: Document,
+        highres: bool = False,
+        expansion: Tuple[float, float] | None = None,
+        remove_blocks: Sequence[BlockTypes] | None = None,
+    ) -> Image.Image | None:
         image = self.highres_image if highres else self.lowres_image
         if image is None:
             page = document.get_page(self.page_id)
             page_image = page.get_image(highres=highres, remove_blocks=remove_blocks)
 
             # Scale to the image size
-            bbox = self.polygon.rescale((page.polygon.width, page.polygon.height), page_image.size)
+            bbox = self.polygon.rescale(
+                (page.polygon.width, page.polygon.height), page_image.size
+            )
             if expansion:
                 bbox = bbox.expand(*expansion)
             bbox = bbox.bbox
             image = page_image.crop(bbox)
         return image
 
-
     def structure_blocks(self, document_page: Document | PageGroup) -> List[Block]:
         if self.structure is None:
             return []
         return [document_page.get_block(block_id) for block_id in self.structure]
 
-    def get_prev_block(self, document_page: Document | PageGroup, block: Block, ignored_block_types: Optional[List[BlockTypes]] = None):
+    def get_prev_block(
+        self,
+        document_page: Document | PageGroup,
+        block: Block,
+        ignored_block_types: Optional[List[BlockTypes]] = None,
+    ):
         if ignored_block_types is None:
             ignored_block_types = []
 
@@ -155,7 +176,12 @@ class Block(BaseModel):
             if prev_block_id.block_type not in ignored_block_types:
                 return document_page.get_block(prev_block_id)
 
-    def get_next_block(self, document_page: Document | PageGroup, block: Optional[Block] = None, ignored_block_types: Optional[List[BlockTypes]] = None):
+    def get_next_block(
+        self,
+        document_page: Document | PageGroup,
+        block: Optional[Block] = None,
+        ignored_block_types: Optional[List[BlockTypes]] = None,
+    ):
         if ignored_block_types is None:
             ignored_block_types = []
 
@@ -205,7 +231,13 @@ class Block(BaseModel):
                 text += "\n"
         return text
 
-    def assemble_html(self, document: Document, child_blocks: List[BlockOutput], parent_structure: Optional[List[str]] = None):
+    def assemble_html(
+        self,
+        document: Document,
+        child_blocks: List[BlockOutput],
+        parent_structure: Optional[List[str]] = None,
+        block_config: Optional[dict] = None,
+    ) -> str:
         if self.ignore_for_output:
             return ""
 
@@ -229,7 +261,9 @@ class Block(BaseModel):
 
         return section_hierarchy
 
-    def contained_blocks(self, document: Document, block_types: Sequence[BlockTypes] = None) -> List[Block]:
+    def contained_blocks(
+        self, document: Document, block_types: Sequence[BlockTypes] = None
+    ) -> List[Block]:
         if self.structure is None:
             return []
 
@@ -238,7 +272,9 @@ class Block(BaseModel):
             block = document.get_block(block_id)
             if block.removed:
                 continue
-            if (block_types is None or block.block_type in block_types) and not block.removed:
+            if (
+                block_types is None or block.block_type in block_types
+            ) and not block.removed:
                 blocks.append(block)
             blocks += block.contained_blocks(document, block_types)
         return blocks
@@ -250,7 +286,13 @@ class Block(BaseModel):
                     self.structure[i] = new_block.id
                     break
 
-    def render(self, document: Document, parent_structure: Optional[List[str]] = None, section_hierarchy: dict | None = None):
+    def render(
+        self,
+        document: Document,
+        parent_structure: Optional[List[str]] = None,
+        section_hierarchy: dict | None = None,
+        block_config: Optional[dict] = None,
+    ) -> BlockOutput:
         child_content = []
         if section_hierarchy is None:
             section_hierarchy = {}
@@ -259,16 +301,22 @@ class Block(BaseModel):
         if self.structure is not None and len(self.structure) > 0:
             for block_id in self.structure:
                 block = document.get_block(block_id)
-                rendered = block.render(document, self.structure, section_hierarchy)
-                section_hierarchy = rendered.section_hierarchy.copy()  # Update the section hierarchy from the peer blocks
+                rendered = block.render(
+                    document, self.structure, section_hierarchy, block_config
+                )
+                section_hierarchy = (
+                    rendered.section_hierarchy.copy()
+                )  # Update the section hierarchy from the peer blocks
                 child_content.append(rendered)
 
         return BlockOutput(
-            html=self.assemble_html(document, child_content, parent_structure),
+            html=self.assemble_html(
+                document, child_content, parent_structure, block_config
+            ),
             polygon=self.polygon,
             id=self.id,
             children=child_content,
-            section_hierarchy=section_hierarchy
+            section_hierarchy=section_hierarchy,
         )
 
     def line_height(self, document: Document) -> float:
@@ -288,7 +336,15 @@ class Block(BaseModel):
             else:
                 raise ValueError(f"Metadata attribute {key} is not an integer")
 
-    def handle_html_output(self, document, child_blocks, parent_structure):
-        child_ref_blocks = [block for block in child_blocks if block.id.block_type == BlockTypes.Reference]
-        html = Block.assemble_html(self, document, child_ref_blocks, parent_structure)
+    def handle_html_output(
+        self, document, child_blocks, parent_structure, block_config=None
+    ):
+        child_ref_blocks = [
+            block
+            for block in child_blocks
+            if block.id.block_type == BlockTypes.Reference
+        ]
+        html = Block.assemble_html(
+            self, document, child_ref_blocks, parent_structure, block_config
+        )
         return html + self.html

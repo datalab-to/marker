@@ -23,9 +23,20 @@ class BaseRenderer:
         Literal["lowres", "highres"],
         "The mode to use for extracting images.",
     ] = "highres"
+    keep_pageheader_in_output: Annotated[
+        bool, "Keep the page header in the output HTML."
+    ] = False
+    keep_pagefooter_in_output: Annotated[
+        bool, "Keep the page footer in the output HTML."
+    ] = False
 
     def __init__(self, config: Optional[BaseModel | dict] = None):
         assign_config(self, config)
+
+        self.block_config = {
+            "keep_pageheader_in_output": self.keep_pageheader_in_output,
+            "keep_pagefooter_in_output": self.keep_pagefooter_in_output,
+        }
 
     def __call__(self, document):
         # Children are in reading order

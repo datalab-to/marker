@@ -39,5 +39,6 @@ class OCRConverter(PdfConverter):
 
     def __call__(self, filepath: str):
         document = self.build_document(filepath)
+        self.page_count = len(document.pages)
         renderer = self.resolve_dependencies(self.renderer)
         return renderer(document)

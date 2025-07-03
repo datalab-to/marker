@@ -5,7 +5,7 @@ from typing import Annotated, Tuple
 import regex
 import six
 from bs4 import NavigableString
-from markdownify import MarkdownConverter, whitespace_re
+from markdownify import MarkdownConverter, re_whitespace
 from marker.logger import get_logger
 from pydantic import BaseModel
 
@@ -70,7 +70,7 @@ class Markdownify(MarkdownConverter):
         self.inline_math_delimiters = inline_math_delimiters
         self.block_math_delimiters = block_math_delimiters
 
-    def convert_div(self, el, text, convert_as_inline):
+    def convert_div(self, el, text, parent_tags):
         is_page = el.has_attr("class") and el["class"][0] == "page"
         if self.paginate_output and is_page:
             page_id = el["data-page-id"]
@@ -81,7 +81,7 @@ class Markdownify(MarkdownConverter):
         else:
             return text
 
-    def convert_p(self, el, text, convert_as_inline):
+    def convert_p(self, el, text, parent_tags):
         hyphens = r"-—¬"
         has_continuation = el.has_attr("class") and "has-continuation" in el["class"]
         if has_continuation:
@@ -96,7 +96,7 @@ class Markdownify(MarkdownConverter):
                 return f"{text}"
         return f"{text}\n\n" if text else ""  # default convert_p behavior
 
-    def convert_math(self, el, text, convert_as_inline):
+    def convert_math(self, el, text, parent_tags):
         block = el.has_attr("display") and el["display"] == "block"
         if block:
             return (
@@ -117,7 +117,7 @@ class Markdownify(MarkdownConverter):
                 + " "
             )
 
-    def convert_table(self, el, text, convert_as_inline):
+    def convert_table(self, el, text, parent_tags):
         total_rows = len(el.find_all("tr"))
         colspans = []
         rowspan_cols = defaultdict(int)
@@ -214,30 +214,30 @@ class Markdownify(MarkdownConverter):
         table_md = "\n".join(markdown_lines)
         return "\n\n" + table_md + "\n\n"
 
-    def convert_a(self, el, text, convert_as_inline):
+    def convert_a(self, el, text, parent_tags):
         text = self.escape(text)
         # Escape brackets and parentheses in text
         text = re.sub(r"([\[\]()])", r"\\\1", text)
-        return super().convert_a(el, text, convert_as_inline)
+        return super().convert_a(el, text, parent_tags)
 
-    def convert_span(self, el, text, convert_as_inline):
+    def convert_span(self, el, text, parent_tags):
         if el.get("id"):
             return f'<span id="{el["id"]}">{text}</span>'
         else:
             return text
 
-    def escape(self, text):
-        text = super().escape(text)
+    def escape(self, text, parent_tags=None):
+        text = super().escape(text, parent_tags)
         if self.options["escape_dollars"]:
             text = text.replace("$", r"\$")
         return text
 
-    def process_text(self, el):
+    def process_text(self, el, parent_tags=None):
         text = six.text_type(el) or ""
 
         # normalize whitespace if we're not inside a preformatted element
         if not el.find_parent("pre"):
-            text = whitespace_re.sub(" ", text)
+            text = re_whitespace.sub(" ", text)
 
         # escape special characters if we're not inside a preformatted or code element
         if not el.find_parent(["pre", "code", "kbd", "samp", "math"]):
@@ -289,10 +289,18 @@ class MarkdownRenderer(HTMLRenderer):
         )
 
     def __call__(self, document: Document) -> MarkdownOutput:
-        document_output = document.render()
+        document_output = document.render(self.block_config)
         full_html, images = self.extract_html(document, document_output)
         markdown = self.md_cls.convert(full_html)
         markdown = cleanup_text(markdown)
+
+        # Ensure we set the correct blanks for pagination markers
+        if self.paginate_output:
+            if not markdown.startswith("\n\n"):
+                markdown = "\n\n" + markdown
+            if markdown.endswith(self.page_separator):
+                markdown += "\n\n"
+
         return MarkdownOutput(
             markdown=markdown,
             images=images,

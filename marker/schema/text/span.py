@@ -7,8 +7,8 @@ from marker.schema.blocks import Block
 
 
 def cleanup_text(full_text):
-    full_text = re.sub(r'(\n\s){3,}', '\n\n', full_text)
-    full_text = full_text.replace('\xa0', ' ')  # Replace non-breaking spaces
+    full_text = re.sub(r"(\n\s){3,}", "\n\n", full_text)
+    full_text = full_text.replace("\xa0", " ")  # Replace non-breaking spaces
     return full_text
 
 
@@ -22,7 +22,21 @@ class Span(Block):
     font_size: float
     minimum_position: int
     maximum_position: int
-    formats: List[Literal['plain', 'math', 'chemical', 'bold', 'italic', 'highlight', 'subscript', 'superscript', 'small', 'code', 'underline']]
+    formats: List[
+        Literal[
+            "plain",
+            "math",
+            "chemical",
+            "bold",
+            "italic",
+            "highlight",
+            "subscript",
+            "superscript",
+            "small",
+            "code",
+            "underline",
+        ]
+    ]
     has_superscript: bool = False
     has_subscript: bool = False
     url: Optional[str] = None
@@ -30,41 +44,41 @@ class Span(Block):
 
     @property
     def bold(self):
-        return 'bold' in self.formats
+        return "bold" in self.formats
 
     @property
     def italic(self):
-        return 'italic' in self.formats
+        return "italic" in self.formats
 
     @property
     def math(self):
-        return 'math' in self.formats
+        return "math" in self.formats
 
     @property
     def highlight(self):
-        return 'highlight' in self.formats
+        return "highlight" in self.formats
 
     @property
     def superscript(self):
-        return 'superscript' in self.formats
+        return "superscript" in self.formats
 
     @property
     def subscript(self):
-        return 'subscript' in self.formats
+        return "subscript" in self.formats
 
     @property
     def small(self):
-        return 'small' in self.formats
+        return "small" in self.formats
 
     @property
     def code(self):
-        return 'code' in self.formats
+        return "code" in self.formats
 
     @property
     def underline(self):
-        return 'underline' in self.formats
+        return "underline" in self.formats
 
-    def assemble_html(self, document, child_blocks, parent_structure):
+    def assemble_html(self, document, child_blocks, parent_structure, block_config):
         if self.ignore_for_output:
             return ""
 
@@ -83,10 +97,12 @@ class Span(Block):
         while len(text) > 0 and text[0] in ["\n", "\r"]:
             text = text[1:]
 
-        if replaced_newline and not text.endswith('-'):
+        if replaced_newline and not text.endswith("-"):
             text += " "
 
-        text = text.replace("-\n", "")  # Remove hyphenated line breaks from the middle of the span
+        text = text.replace(
+            "-\n", ""
+        )  # Remove hyphenated line breaks from the middle of the span
         text = html.escape(text)
         text = cleanup_text(text)
 

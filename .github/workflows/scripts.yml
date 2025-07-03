@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: t4_gpu
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python 3.11
@@ -22,9 +22,9 @@ jobs:
       - name: Test single script
         run: poetry run marker_single benchmark_data/pdfs/switch_trans.pdf --page_range 0
       - name: Test convert script
-        run: poetry run marker benchmark_data/pdfs --max_files 1 --workers 1 --page_range 0
+        run: poetry run marker benchmark_data/pdfs --max_files 1 --page_range 0
       - name: Text convert script multiple workers
-        run: poetry run marker benchmark_data/pdfs --max_files 2 --workers 2 --page_range 0-5
+        run: poetry run marker benchmark_data/pdfs --max_files 2 --page_range 0-5
       - name: Test llm option
         run: |
           poetry run marker_single benchmark_data/pdfs/switch_trans.pdf --page_range 0 --use_llm > output.txt || echo "Command failed but continuing"

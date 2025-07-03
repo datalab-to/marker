@@ -1,14 +1,14 @@
 # Marker
 
-Marker converts documents to markdown, JSON, and HTML quickly and accurately.
+Marker converts documents to markdown, JSON, chunks, and HTML quickly and accurately.
 
 - Converts PDF, image, PPTX, DOCX, XLSX, HTML, EPUB files in all languages
-- Does structured extraction, given a JSON schema (beta)
 - Formats tables, forms, equations, inline math, links, references, and code blocks
 - Extracts and saves images
 - Removes headers/footers/other artifacts
 - Extensible with your own formatting and logic
-- Optionally boost accuracy with LLMs
+- Does structured extraction, given a JSON schema (beta)
+- Optionally boost accuracy with LLMs (and your own prompt)
 - Works on GPU, CPU, or MPS
 
 ## Performance
@@ -17,7 +17,7 @@ Marker converts documents to markdown, JSON, and HTML quickly and accurately.
 
 Marker benchmarks favorably compared to cloud services like Llamaparse and Mathpix, as well as other open source tools.
 
-The above results are running single PDF pages serially.  Marker is significantly faster when running in batch mode, with a projected throughput of 122 pages/second on an H100 (.18 seconds per page across 22 processes).
+The above results are running single PDF pages serially.  Marker is significantly faster when running in batch mode, with a projected throughput of 25 pages/second on an H100.
 
 See [below](#benchmarks) for detailed speed and accuracy benchmarks, and instructions on how to run your own benchmarks.
 
@@ -61,7 +61,7 @@ There's a hosted API for marker available [here](https://www.datalab.to/):
 
 # Installation
 
-You'll need python 3.10+ and PyTorch.  You may need to install the CPU version of torch first if you're not using a Mac or a GPU machine.  See [here](https://pytorch.org/get-started/locally/) for more details.
+You'll need python 3.10+ and [PyTorch](https://pytorch.org/get-started/locally/).
 
 Install with:
 
@@ -81,6 +81,7 @@ First, some configuration:
 
 - Your torch device will be automatically detected, but you can override this.  For example, `TORCH_DEVICE=cuda`.
 - Some PDFs, even digital ones, have bad text in them.  Set the `format_lines` flag to ensure the bad lines are fixed and formatted. You can also set `--force_ocr` to force OCR on all lines, or the `strip_existing_ocr` to keep all digital text, and strip out any existing OCR text.
+- If you care about inline math, set `format_lines` to automatically convert inline math to LaTeX.
 
 ## Interactive App
 
@@ -101,7 +102,7 @@ You can pass in PDFs or images.
 
 Options:
 - `--page_range TEXT`: Specify which pages to process. Accepts comma-separated page numbers and ranges. Example: `--page_range "0,5-10,20"` will process pages 0, 5 through 10, and page 20.
-- `--output_format [markdown|json|html]`: Specify the format for the output results.
+- `--output_format [markdown|json|html|chunks]`: Specify the format for the output results.
 - `--output_dir PATH`: Directory where output files will be saved. Defaults to the value specified in settings.OUTPUT_DIR.
 - `--paginate_output`: Paginates the output, using `\n\n{PAGE_NUMBER}` followed by `-` * 48, then `\n\n` 
 - `--use_llm`: Uses an LLM to improve accuracy.  You will need to configure the LLM backend - see [below](#llm-services).
@@ -275,6 +276,8 @@ converter = ExtractionConverter(
 rendered = converter("FILEPATH")
 ```
 
+Rendered will have an `original_markdown` field.  If you pass this back in next time you run the converter, as the `existing_markdown` config key, you can skip re-parsing the document.
+
 # Output Formats
 
 ## Markdown
@@ -345,6 +348,10 @@ Note that child blocks of pages can have their own children as well (a tree stru
 
 ```
 
+## Chunks
+
+Chunks format is similar to JSON, but flattens everything into a single list instead of a tree.  Only the top level blocks from each page show up. It also has the full HTML of each block inside, so you don't need to crawl the tree to reconstruct it.  This enable flexible and easy chunking for RAG.
+
 ## Metadata
 
 All output formats will return a metadata dictionary, with the following fields:
@@ -379,6 +386,7 @@ When running with the `--use_llm` flag, you have a choice of services you can us
 - `Ollama` - this will use local models.  You can configure `--ollama_base_url` and `--ollama_model`. To use it, set `--llm_service=marker.services.ollama.OllamaService`.
 - `Claude` - this will use the anthropic API.  You can configure `--claude_api_key`, and `--claude_model_name`.  To use it, set `--llm_service=marker.services.claude.ClaudeService`.
 - `OpenAI` - this supports any openai-like endpoint. You can configure `--openai_api_key`, `--openai_model`, and `--openai_base_url`. To use it, set `--llm_service=marker.services.openai.OpenAIService`.
+- `Azure OpenAI` - this uses the Azure OpenAI service. You can configure `--azure_endpoint`, `--azure_api_key`, and `--deployment_name`. To use it, set `--llm_service=marker.services.azure_openai.AzureOpenAIService`.
 
 These services may have additional optional configuration as well - you can see it by viewing the classes.
 

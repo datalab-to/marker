@@ -4,9 +4,13 @@ on: [push]
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: t4_gpu
     steps:
       - uses: actions/checkout@v3
+      - name: Install apt requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libcairo2 libffi-dev shared-mime-info
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:

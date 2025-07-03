@@ -15,7 +15,7 @@ class JSONBlockOutput(BaseModel):
     html: str
     polygon: List[List[float]]
     bbox: List[float]
-    children: List['JSONBlockOutput'] | None = None
+    children: List["JSONBlockOutput"] | None = None
     section_hierarchy: Dict[int, str] | None = None
     images: dict | None = None
 
@@ -38,6 +38,7 @@ class JSONRenderer(BaseRenderer):
     """
     A renderer for JSON output.
     """
+
     image_blocks: Annotated[
         Tuple[BlockTypes],
         "The list of block types to consider as images.",
@@ -58,7 +59,9 @@ class JSONRenderer(BaseRenderer):
                 id=str(block_output.id),
                 block_type=str(block_output.id.block_type),
                 images=images,
-                section_hierarchy=reformat_section_hierarchy(block_output.section_hierarchy)
+                section_hierarchy=reformat_section_hierarchy(
+                    block_output.section_hierarchy
+                ),
             )
         else:
             children = []
@@ -73,11 +76,13 @@ class JSONRenderer(BaseRenderer):
                 id=str(block_output.id),
                 block_type=str(block_output.id.block_type),
                 children=children,
-                section_hierarchy=reformat_section_hierarchy(block_output.section_hierarchy)
+                section_hierarchy=reformat_section_hierarchy(
+                    block_output.section_hierarchy
+                ),
             )
 
     def __call__(self, document: Document) -> JSONOutput:
-        document_output = document.render()
+        document_output = document.render(self.block_config)
         json_output = []
         for page_output in document_output.children:
             json_output.append(self.extract_json(document, page_output))

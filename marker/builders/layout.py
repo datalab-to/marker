@@ -95,6 +95,7 @@ class LayoutBuilder(BaseBuilder):
         for page in document.pages:
             # Collect all blocks on this page as PolygonBox for easy access
             page_blocks = [document.get_block(bid) for bid in page.structure]
+            page_size = page.polygon.size
 
             for block_id in page.structure:
                 block = document.get_block(block_id)
@@ -103,7 +104,7 @@ class LayoutBuilder(BaseBuilder):
                     if not other_blocks:
                         block.polygon = block.polygon.expand(
                             self.max_expand_frac, self.max_expand_frac
-                        )
+                        ).fit_to_bounds((0, 0, *page_size))
                         continue
 
                     min_gap = min(
@@ -125,7 +126,7 @@ class LayoutBuilder(BaseBuilder):
                     block.polygon = block.polygon.expand(
                         min(self.max_expand_frac, x_expand_frac),
                         min(self.max_expand_frac, y_expand_frac),
-                    )
+                    ).fit_to_bounds((0, 0, *page_size))
 
     def add_blocks_to_pages(
         self, pages: List[PageGroup], layout_results: List[LayoutResult]
@@ -143,7 +144,7 @@ class LayoutBuilder(BaseBuilder):
                 )
                 layout_block.polygon = layout_block.polygon.rescale(
                     layout_page_size, provider_page_size
-                )
+                ).fit_to_bounds((0, 0, *provider_page_size))
                 layout_block.top_k = {
                     BlockTypes[label]: prob for (label, prob) in bbox.top_k.items()
                 }

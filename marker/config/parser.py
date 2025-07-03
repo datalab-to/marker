@@ -7,6 +7,7 @@ import click
 from marker.config.crawler import crawler
 from marker.converters.pdf import PdfConverter
 from marker.logger import get_logger
+from marker.renderers.chunk import ChunkRenderer
 from marker.renderers.html import HTMLRenderer
 from marker.renderers.json import JSONRenderer
 from marker.renderers.markdown import MarkdownRenderer
@@ -32,7 +33,7 @@ class ConfigParser:
         fn = click.option("--debug", "-d", is_flag=True, help="Enable debug mode.")(fn)
         fn = click.option(
             "--output_format",
-            type=click.Choice(["markdown", "json", "html"]),
+            type=click.Choice(["markdown", "json", "html", "chunks"]),
             default="markdown",
             help="Format to output results in.",
         )(fn)
@@ -134,6 +135,8 @@ class ConfigParser:
                 r = MarkdownRenderer
             case "html":
                 r = HTMLRenderer
+            case "chunks":
+                r = ChunkRenderer
             case _:
                 raise ValueError("Invalid output format")
         return classes_to_strings([r])[0]

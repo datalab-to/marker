@@ -1,7 +1,6 @@
 from typing import List
 
 import pytest
-from marker.renderers.json import JSONRenderer
 
 from marker.renderers.markdown import MarkdownRenderer
 from marker.schema import BlockTypes
@@ -10,7 +9,9 @@ from marker.schema.blocks import TableCell
 
 
 @pytest.mark.config({"page_range": [5]})
-def test_table_processor(pdf_document, detection_model, recognition_model, table_rec_model):
+def test_table_processor(
+    pdf_document, detection_model, recognition_model, table_rec_model
+):
     processor = TableProcessor(detection_model, recognition_model, table_rec_model)
     processor(pdf_document)
 
@@ -30,12 +31,16 @@ def test_table_processor(pdf_document, detection_model, recognition_model, table
 
 @pytest.mark.filename("table_ex.pdf")
 @pytest.mark.config({"page_range": [0], "force_ocr": True})
-def test_avoid_double_ocr(pdf_document, detection_model, recognition_model, table_rec_model):
+def test_avoid_double_ocr(
+    pdf_document, detection_model, recognition_model, table_rec_model
+):
     tables = pdf_document.contained_blocks((BlockTypes.Table,))
     lines = tables[0].contained_blocks(pdf_document, (BlockTypes.Line,))
     assert len(lines) == 0
 
-    processor = TableProcessor(detection_model, recognition_model, table_rec_model, config={"force_ocr": True})
+    processor = TableProcessor(
+        detection_model, recognition_model, table_rec_model, config={"force_ocr": True}
+    )
     processor(pdf_document)
 
     renderer = MarkdownRenderer()
@@ -45,14 +50,20 @@ def test_avoid_double_ocr(pdf_document, detection_model, recognition_model, tabl
 
 @pytest.mark.filename("multicol-blocks.pdf")
 @pytest.mark.config({"page_range": [3]})
-def test_overlap_blocks(pdf_document, detection_model, recognition_model, table_rec_model):
+def test_overlap_blocks(
+    pdf_document, detection_model, recognition_model, table_rec_model
+):
     page = pdf_document.pages[0]
-    assert "Cascading, and the Auxiliary Problem Principle" in page.raw_text(pdf_document)
+    assert "Cascading, and the Auxiliary Problem Principle" in page.raw_text(
+        pdf_document
+    )
 
     processor = TableProcessor(detection_model, recognition_model, table_rec_model)
     processor(pdf_document)
 
-    assert "Cascading, and the Auxiliary Problem Principle" in page.raw_text(pdf_document)
+    assert "Cascading, and the Auxiliary Problem Principle" in page.raw_text(
+        pdf_document
+    )
 
 
 @pytest.mark.filename("pres.pdf")
@@ -72,8 +83,8 @@ def test_split_rows(pdf_document, detection_model, recognition_model, table_rec_
     processor(pdf_document)
 
     table = pdf_document.contained_blocks((BlockTypes.Table,))[-1]
-    cells: List[TableCell] = table.contained_blocks(pdf_document, (BlockTypes.TableCell,))
+    cells: List[TableCell] = table.contained_blocks(
+        pdf_document, (BlockTypes.TableCell,)
+    )
     unique_rows = len(set([cell.row_id for cell in cells]))
     assert unique_rows == 6
-
-

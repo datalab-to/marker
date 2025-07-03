@@ -81,7 +81,7 @@ class Line(Block):
 
         return text
 
-    def assemble_html(self, document, child_blocks, parent_structure):
+    def assemble_html(self, document, child_blocks, parent_structure, block_config):
         template = ""
         for c in child_blocks:
             template += c.html
@@ -99,17 +99,23 @@ class Line(Block):
             )  # strip any trailing whitespace from the last line
         return template
 
-    def render(self, document, parent_structure, section_hierarchy=None):
+    def render(
+        self, document, parent_structure, section_hierarchy=None, block_config=None
+    ):
         child_content = []
         if self.structure is not None and len(self.structure) > 0:
             for block_id in self.structure:
                 block = document.get_block(block_id)
                 child_content.append(
-                    block.render(document, parent_structure, section_hierarchy)
+                    block.render(
+                        document, parent_structure, section_hierarchy, block_config
+                    )
                 )
 
         return BlockOutput(
-            html=self.assemble_html(document, child_content, parent_structure),
+            html=self.assemble_html(
+                document, child_content, parent_structure, block_config
+            ),
             polygon=self.polygon,
             id=self.id,
             children=[],

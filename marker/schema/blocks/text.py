@@ -10,15 +10,21 @@ class Text(Block):
     html: str | None = None
     block_description: str = "A paragraph or line of text."
 
-    def assemble_html(self, document, child_blocks, parent_structure):
+    def assemble_html(
+        self, document, child_blocks, parent_structure, block_config=None
+    ):
         if self.ignore_for_output:
             return ""
 
         # This happens when we used an llm processor
         if self.html:
-            return super().handle_html_output(document, child_blocks, parent_structure)
+            return super().handle_html_output(
+                document, child_blocks, parent_structure, block_config
+            )
 
-        template = super().assemble_html(document, child_blocks, parent_structure)
+        template = super().assemble_html(
+            document, child_blocks, parent_structure, block_config
+        )
         template = template.replace("\n", " ")
 
         el_attr = f" block-type='{self.block_type}'"

@@ -1,6 +1,18 @@
 import atexit
 import os
+import time
 
+import psutil
+import torch
+
+from marker.utils.batch import get_batch_sizes_worker_counts
+
+# Ensure threads don't contend
+os.environ["MKL_DYNAMIC"] = "FALSE"
+os.environ["OMP_DYNAMIC"] = "FALSE"
+os.environ["OMP_NUM_THREADS"] = "2"  # Avoid OpenMP issues with multiprocessing
+os.environ["OPENBLAS_NUM_THREADS"] = "2"
+os.environ["MKL_NUM_THREADS"] = "2"
 os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = (
@@ -21,15 +33,14 @@ from marker.config.printer import CustomClickPrinter
 from marker.logger import configure_logging, get_logger
 from marker.models import create_model_dict
 from marker.output import output_exists, save_output
-from marker.settings import settings
+from marker.utils.gpu import GPUManager
 
 configure_logging()
 logger = get_logger()
 
 
-def worker_init(model_dict):
-    if model_dict is None:
-        model_dict = create_model_dict()
+def worker_init():
+    model_dict = create_model_dict()
 
     global model_refs
     model_refs = model_dict
@@ -47,13 +58,17 @@ def worker_exit():
 
 
 def process_single_pdf(args):
+    page_count = 0
     fpath, cli_options = args
+    torch.set_num_threads(cli_options["total_torch_threads"])
+    del cli_options["total_torch_threads"]
+
     config_parser = ConfigParser(cli_options)
 
     out_folder = config_parser.get_output_folder(fpath)
     base_name = config_parser.get_base_filename(fpath)
     if cli_options.get("skip_existing") and output_exists(out_folder, base_name):
-        return
+        return page_count
 
     converter_cls = config_parser.get_converter_cls()
     config_dict = config_parser.generate_config_dict()
@@ -72,6 +87,8 @@ def process_single_pdf(args):
         rendered = converter(fpath)
         out_folder = config_parser.get_output_folder(fpath)
         save_output(rendered, out_folder, base_name)
+        page_count = converter.page_count
+
         if cli_options.get("debug_print"):
             logger.debug(f"Converted {fpath}")
         del rendered
@@ -81,6 +98,8 @@ def process_single_pdf(args):
         traceback.print_exc()
     finally:
         gc.collect()
+
+    return page_count
 
 
 @click.command(cls=CustomClickPrinter)
@@ -96,9 +115,6 @@ def process_single_pdf(args):
     "--max_files", type=int, default=None, help="Maximum number of pdfs to convert"
 )
 @click.option(
-    "--workers", type=int, default=5, help="Number of worker processes to use."
-)
-@click.option(
     "--skip_existing",
     is_flag=True,
     default=False,
@@ -111,10 +127,11 @@ def process_single_pdf(args):
     "--max_tasks_per_worker",
     type=int,
     default=10,
-    help="Maximum number of tasks per worker process.",
+    help="Maximum number of tasks per worker process before recycling.",
 )
 @ConfigParser.common_options
 def convert_cli(in_folder: str, **kwargs):
+    total_pages = 0
     in_folder = os.path.abspath(in_folder)
     files = [os.path.join(in_folder, f) for f in os.listdir(in_folder)]
     files = [f for f in files if os.path.isfile(f)]
@@ -133,8 +150,6 @@ def convert_cli(in_folder: str, **kwargs):
     # Disable nested multiprocessing
     kwargs["disable_multiprocessing"] = True
 
-    total_processes = min(len(files_to_convert), kwargs["workers"])
-
     try:
         mp.set_start_method("spawn")  # Required for CUDA, forkserver doesn't work
     except RuntimeError:
@@ -142,28 +157,37 @@ def convert_cli(in_folder: str, **kwargs):
             "Set start method to spawn twice. This may be a temporary issue with the script. Please try running it again."
         )
 
-    if settings.TORCH_DEVICE == "mps" or settings.TORCH_DEVICE_MODEL == "mps":
-        model_dict = None
-    else:
-        model_dict = create_model_dict()
-        for k, v in model_dict.items():
-            v.model.share_memory()
+    chunk_idx = kwargs["chunk_idx"]
 
-    logger.info(
-        f"Converting {len(files_to_convert)} pdfs in chunk {kwargs['chunk_idx'] + 1}/{kwargs['num_chunks']} with {total_processes} processes and saving to {kwargs['output_dir']}"
-    )
-    task_args = [(f, kwargs) for f in files_to_convert]
+    # Use GPU context manager for automatic setup/cleanup
+    with GPUManager(chunk_idx) as gpu_manager:
+        batch_sizes, workers = get_batch_sizes_worker_counts(gpu_manager, 7)
 
-    with mp.Pool(
-        processes=total_processes,
-        initializer=worker_init,
-        initargs=(model_dict,),
-        maxtasksperchild=kwargs["max_tasks_per_worker"],
-    ) as pool:
-        pbar = tqdm(total=len(task_args), desc="Processing PDFs", unit="pdf")
-        for _ in pool.imap_unordered(process_single_pdf, task_args):
-            pbar.update(1)
-        pbar.close()
+        # Set proper batch sizes and thread counts
+        total_processes = min(len(files_to_convert), workers)
+        kwargs["total_torch_threads"] = max(
+            2, psutil.cpu_count(logical=False) // total_processes
+        )
+        kwargs.update(batch_sizes)
 
-    # Delete all CUDA tensors
-    del model_dict
+        logger.info(
+            f"Converting {len(files_to_convert)} pdfs in chunk {kwargs['chunk_idx'] + 1}/{kwargs['num_chunks']} with {total_processes} processes and saving to {kwargs['output_dir']}"
+        )
+        task_args = [(f, kwargs) for f in files_to_convert]
+
+        start_time = time.time()
+        with mp.Pool(
+            processes=total_processes,
+            initializer=worker_init,
+            maxtasksperchild=kwargs["max_tasks_per_worker"],
+        ) as pool:
+            pbar = tqdm(total=len(task_args), desc="Processing PDFs", unit="pdf")
+            for page_count in pool.imap_unordered(process_single_pdf, task_args):
+                pbar.update(1)
+                total_pages += page_count
+            pbar.close()
+
+        total_time = time.time() - start_time
+        print(
+            f"Inferenced {total_pages} pages in {total_time:.2f} seconds, for a throughput of {total_pages / total_time:.2f} pages/sec for chunk {chunk_idx + 1}/{kwargs['num_chunks']}"
+        )

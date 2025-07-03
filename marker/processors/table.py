@@ -68,6 +68,7 @@ class TableProcessor(BaseProcessor):
         bool,
         "Whether to format the lines.",
     ] = False
+    drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
 
     def __init__(
         self,
@@ -479,6 +480,7 @@ class TableProcessor(BaseProcessor):
             det_predictor=self.detection_model,
             recognition_batch_size=self.get_recognition_batch_size(),
             detection_batch_size=self.get_detection_batch_size(),
+            drop_repeated_text=self.drop_repeated_text,
         )
 
         for block, ocr_res in zip(ocr_blocks, ocr_results):

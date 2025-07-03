@@ -9,15 +9,15 @@ from typing import Annotated, List
 
 
 class LLMImageDescriptionProcessor(BaseLLMSimpleBlockProcessor):
-    block_types = (BlockTypes.Picture, BlockTypes.Figure,)
-    extract_images: Annotated[
-        bool,
-        "Extract images from the document."
-    ] = True
+    block_types = (
+        BlockTypes.Picture,
+        BlockTypes.Figure,
+    )
+    extract_images: Annotated[bool, "Extract images from the document."] = True
     image_description_prompt: Annotated[
         str,
         "The prompt to use for generating image descriptions.",
-        "Default is a string containing the Gemini prompt."
+        "Default is a string containing the Gemini prompt.",
     ] = """You are a document analysis expert who specializes in creating text descriptions for images.
 You will receive an image of a picture or figure.  Your job will be to create a short description of the image.
 **Instructions:**
@@ -49,20 +49,26 @@ In this figure, a bar chart titled "Fruit Preference Survey" is showing the numb
         prompt_data = []
         for block_data in self.inference_blocks(document):
             block = block_data["block"]
-            prompt = self.image_description_prompt.replace("{raw_text}", block.raw_text(document))
+            prompt = self.image_description_prompt.replace(
+                "{raw_text}", block.raw_text(document)
+            )
             image = self.extract_image(document, block)
 
-            prompt_data.append({
-                "prompt": prompt,
-                "image": image,
-                "block": block,
-                "schema": ImageSchema,
-                "page": block_data["page"]
-            })
+            prompt_data.append(
+                {
+                    "prompt": prompt,
+                    "image": image,
+                    "block": block,
+                    "schema": ImageSchema,
+                    "page": block_data["page"],
+                }
+            )
 
         return prompt_data
 
-    def rewrite_block(self, response: dict, prompt_data: PromptData, document: Document):
+    def rewrite_block(
+        self, response: dict, prompt_data: PromptData, document: Document
+    ):
         block = prompt_data["block"]
 
         if not response or "image_description" not in response:
@@ -75,6 +81,7 @@ In this figure, a bar chart titled "Fruit Preference Survey" is showing the numb
             return
 
         block.description = image_description
+
 
 class ImageSchema(BaseModel):
     image_description: str

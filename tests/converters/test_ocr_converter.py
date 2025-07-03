@@ -35,7 +35,7 @@ def check_bboxes(page: OCRJSONPageOutput, lines):
 
 @pytest.mark.config({"page_range": [0]})
 def test_ocr_converter(config, model_dict, temp_doc):
-    _ocr_converter(config, model_dict, temp_doc, 84, 2)
+    _ocr_converter(config, model_dict, temp_doc, 83, 2)
 
 
 @pytest.mark.filename("pres.pdf")

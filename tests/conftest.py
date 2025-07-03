@@ -13,6 +13,8 @@ from marker.builders.ocr import OcrBuilder
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.providers.registry import provider_from_filepath
+from marker.renderers.chunk import ChunkRenderer
+from marker.renderers.html import HTMLRenderer
 from marker.schema import BlockTypes
 from marker.schema.blocks import Block
 from marker.renderers.markdown import MarkdownRenderer
@@ -129,6 +131,10 @@ def renderer(request, config):
             return MarkdownRenderer
         elif output_format == "json":
             return JSONRenderer
+        elif output_format == "html":
+            return HTMLRenderer
+        elif output_format == "chunks":
+            return ChunkRenderer
         else:
             raise ValueError(f"Unknown output format: {output_format}")
     else:

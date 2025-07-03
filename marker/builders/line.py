@@ -540,11 +540,14 @@ class LineBuilder(BaseBuilder):
                 # Find other detected lines within this provider line, and merge them
                 # Track used lines to ensure no duplicates
                 other_merge_detected_idxs = [
-                    i for i in overlap_idxs
+                    i
+                    for i in overlap_idxs
                     if i not in provider_lines_within_detected_lines
                     and i not in detected_lines_remerged
                 ]
-                other_merge_detected_lines = [detected_lines[i] for i in other_merge_detected_idxs]
+                other_merge_detected_lines = [
+                    detected_lines[i] for i in other_merge_detected_idxs
+                ]
                 lines += other_merge_detected_lines
                 detected_lines_remerged.update(set(other_merge_detected_idxs))
 
@@ -614,6 +617,10 @@ class LineBuilder(BaseBuilder):
         detected_only_lines = []
         LineClass: Line = get_block_class(BlockTypes.Line)
         for j in range(len(detected_line_boxes)):
+            # Ensure we don't do max on an empty array
+            if provider_detected_overlaps[:, j].size == 0:
+                continue
+
             if np.max(provider_detected_overlaps[:, j]) == 0:
                 detected_line_polygon = PolygonBox.from_bbox(detected_line_boxes[j])
                 detected_only_lines.append(
