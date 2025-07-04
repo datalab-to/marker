@@ -143,7 +143,7 @@ class Comparer:
         )
         try:
             responses = client.models.generate_content(
-                model="gemini-2.0-flash-001",
+                model="gemini-2.5-flash",
                 contents=prompt,
                 config={
                     "temperature": 0,
