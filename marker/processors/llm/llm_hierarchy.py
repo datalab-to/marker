@@ -120,7 +120,6 @@ Your output **must be a single JSON array**. Each element in the array represent
                 else:
                     text += self.formatted_block(block, document)
 
-        print(text)
         response = self.llm_service(self.llm_hierarchy_prompt + text, None, None, LLMHierarchySchema)
         llm_hierarchy = response['document']
         
