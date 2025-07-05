@@ -95,7 +95,7 @@ class PdfConverter(BaseConverter):
         # LLMHandwritingProcessor,
         # LLMMathBlockProcessor,
         LLMHierarchyProcessor,
-        LLMSectionHeaderProcessor,
+        # LLMSectionHeaderProcessor,
         # LLMPageCorrectionProcessor,
         ReferenceProcessor,
         BlankPageProcessor,
