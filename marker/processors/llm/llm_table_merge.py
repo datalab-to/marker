@@ -148,7 +148,6 @@ Table 2
         return max_cols
 
     def rewrite_blocks(self, document: Document):
-        pbar = tqdm(desc=f"{self.__class__.__name__} running", disable=self.disable_tqdm)
         table_runs = []
         table_run = []
         prev_block = None
@@ -209,6 +208,17 @@ Table 2
 
         if table_run:
             table_runs.append(table_run)
+
+        # Don't show progress if there is nothing to process
+        total_table_runs = len(table_runs)
+        if total_table_runs == 0:
+            return
+
+        pbar = tqdm(
+            total=total_table_runs,
+            desc=f"{self.__class__.__name__} running",
+            disable=self.disable_tqdm,
+        )
 
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             for future in as_completed([
