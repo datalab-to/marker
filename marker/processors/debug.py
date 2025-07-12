@@ -40,7 +40,8 @@ class DebugProcessor(BaseProcessor):
 
     def __call__(self, document: Document):
         # Remove extension from doc name
-        doc_base = os.path.basename(document.filepath).rsplit(".", 1)[0]
+        filepath = document.filepath if isinstance(document.filepath, str) else ""
+        doc_base = os.path.basename(filepath).rsplit(".", 1)[0]
         self.debug_folder = os.path.join(self.debug_data_folder, doc_base)
         if any([self.debug_layout_images, self.debug_pdf_images, self.debug_json]):
             os.makedirs(self.debug_folder, exist_ok=True)

@@ -23,7 +23,7 @@ class TocItem(BaseModel):
 
 
 class Document(BaseModel):
-    filepath: str
+    filepath: str | bytes
     pages: List[PageGroup]
     block_type: BlockTypes = BlockTypes.Document
     table_of_contents: List[TocItem] | None = None
