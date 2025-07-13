@@ -160,7 +160,7 @@ Table 2
                 if prev_block is not None:
                     prev_cells = prev_block.contained_blocks(document, (BlockTypes.TableCell,))
                     curr_cells = block.contained_blocks(document, (BlockTypes.TableCell,))
-                    row_match = abs(self.get_row_count(prev_cells) - self.get_row_count(curr_cells)) < 5, # Similar number of rows
+                    row_match = abs(self.get_row_count(prev_cells) - self.get_row_count(curr_cells)) < 5 # Similar number of rows
                     col_match = abs(self.get_column_count(prev_cells) - self.get_column_count(curr_cells)) < 2
 
                     subsequent_page_table = all([

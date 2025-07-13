@@ -151,6 +151,17 @@ class ConfigParser:
                 except Exception as e:
                     logger.error(f"Error loading processor: {p} with error: {e}")
                     raise
+        else:
+            # Check JSON config for processors
+            config = self.generate_config_dict()
+            processors = config.get("processors", None)
+            if processors is not None:
+                for p in processors:
+                    try:
+                        strings_to_classes([p])
+                    except Exception as e:
+                        logger.error(f"Error loading processor: {p} with error: {e}")
+                        raise
 
         return processors
 
