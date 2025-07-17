@@ -68,6 +68,7 @@ class TableProcessor(BaseProcessor):
         bool,
         "Whether to format the lines.",
     ] = False
+    disable_ocr_math: Annotated[bool, "Disable inline math recognition in OCR"] = False
     drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
 
     def __init__(
@@ -480,6 +481,7 @@ class TableProcessor(BaseProcessor):
             det_predictor=self.detection_model,
             recognition_batch_size=self.get_recognition_batch_size(),
             detection_batch_size=self.get_detection_batch_size(),
+            math_mode=not self.disable_ocr_math,
             drop_repeated_text=self.drop_repeated_text,
         )
 
