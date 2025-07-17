@@ -154,6 +154,9 @@ converter = PdfConverter(
 )
 rendered = converter("FILEPATH")
 text, _, images = text_from_rendered(rendered)
+
+# Saving markdown, json metadata, and images to a directory
+save_output(rendered=rendered, output_dir="your_output_dir", fname_base: "")
 ```
 
 `rendered` will be a pydantic basemodel with different properties depending on the output type requested.  With markdown output (default), you'll have the properties `markdown`, `metadata`, and `images`.  For json output, you'll have `children`, `block_type`, and `metadata`.
