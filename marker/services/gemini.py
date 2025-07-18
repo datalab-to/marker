@@ -1,7 +1,10 @@
 import json
 import time
 import traceback
+from collections import deque
+from enum import Enum
 from io import BytesIO
+from threading import Lock
 from typing import List, Annotated
 
 import PIL
@@ -17,10 +20,28 @@ from marker.services import BaseService
 logger = get_logger()
 
 
+class GeminiModel(str, Enum):
+    GEMINI_2_5_PRO = "gemini-2.5-pro"
+    GEMINI_2_5_FLASH = "gemini-2.5-flash"
+    DEFAULT = "gemini-2.5-flash"
+
+
+# Rate limiting settings
+MODEL_LIMITS = {
+    GeminiModel.GEMINI_2_5_PRO: {"rpm": 5},
+    GeminiModel.GEMINI_2_5_FLASH: {"rpm": 10},
+    GeminiModel.DEFAULT: {"rpm": 10},  # Corresponds to gemini-2.5-flash
+}
+
+# Global request tracker and lock
+REQUEST_TIMESTAMPS = {model: deque() for model in GeminiModel}
+RATE_LIMIT_LOCK = Lock()
+
+
 class BaseGeminiService(BaseService):
     gemini_model_name: Annotated[
-        str, "The name of the Google model to use for the service."
-    ] = "gemini-2.0-flash"
+        GeminiModel, "The name of the Google model to use for the service."
+    ] = GeminiModel.DEFAULT
 
     def img_to_bytes(self, img: PIL.Image.Image):
         image_bytes = BytesIO()
@@ -51,6 +72,28 @@ class BaseGeminiService(BaseService):
 
         if timeout is None:
             timeout = self.timeout
+
+        # Proactive rate limiting
+        with RATE_LIMIT_LOCK:
+            model_name = self.gemini_model_name
+            rpm_limit = MODEL_LIMITS.get(model_name, {"rpm": 10})["rpm"]
+            request_history = REQUEST_TIMESTAMPS[model_name]
+
+            current_time = time.time()
+            # Remove timestamps older than 60 seconds
+            while request_history and current_time - request_history[0] > 60:
+                request_history.popleft()
+
+            if len(request_history) >= rpm_limit:
+                wait_time = 60 - (current_time - request_history[0])
+                if wait_time > 0:
+                    logger.warning(
+                        f"RPM limit for {model_name} reached. Waiting for {wait_time:.2f} seconds."
+                    )
+                    time.sleep(wait_time)
+
+            # Record the new request timestamp
+            request_history.append(time.time())
 
         client = self.get_google_client(timeout=timeout)
         image_parts = self.format_image_for_llm(image)

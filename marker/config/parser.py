@@ -13,6 +13,7 @@ from marker.renderers.json import JSONRenderer
 from marker.renderers.markdown import MarkdownRenderer
 from marker.settings import settings
 from marker.util import classes_to_strings, parse_range_str, strings_to_classes
+from marker.services.gemini import GeminiModel
 
 logger = get_logger()
 
@@ -83,6 +84,12 @@ class ConfigParser:
             default=None,
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
+        fn = click.option(
+            "--gemini_model_name",
+            type=str,
+            default=None,
+            help="Name of the Gemini model to use (e.g., gemini-2.5-flash)",
+        )(fn)
         return fn
 
     def generate_config_dict(self) -> Dict[str, any]:
@@ -114,6 +121,13 @@ class ConfigParser:
         # Backward compatibility for google_api_key
         if settings.GOOGLE_API_KEY:
             config["gemini_api_key"] = settings.GOOGLE_API_KEY
+
+        if self.cli_options.get("gemini_model_name"):
+            try:
+                config["gemini_model_name"] = GeminiModel(self.cli_options["gemini_model_name"])
+            except ValueError:
+                logger.warning(f"Invalid gemini_model_name: {self.cli_options["gemini_model_name"]}. Using default.")
+                config["gemini_model_name"] = GeminiModel.DEFAULT
 
         return config
 

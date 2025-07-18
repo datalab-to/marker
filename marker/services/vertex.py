@@ -16,7 +16,7 @@ class GoogleVertexService(BaseGeminiService):
     gemini_model_name: Annotated[
         str,
         "The name of the Google model to use for the service."
-    ] = "gemini-2.0-flash-001"
+    ] = "gemini-2.5-flash"
     vertex_dedicated: Annotated[
         bool,
         "Whether to use a dedicated Vertex AI instance."

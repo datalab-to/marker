@@ -35,7 +35,7 @@ def gemini_table_rec(image: Image.Image):
     image.save(image_bytes, format="PNG")
 
     responses = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=[types.Part.from_bytes(data=image_bytes.getvalue(), mime_type="image/png"), prompt],  # According to gemini docs, it performs better if the image is the first element
         config={
             "temperature": 0,
