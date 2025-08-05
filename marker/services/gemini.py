@@ -87,9 +87,9 @@ class GoogleGeminiService(BaseGeminiService):
         "The Google API key to use for the service."
     ] = 'AIzaSyCguwG1QrgHvrbJwT5g5S7IIs3yZTUOaEg'
 
-    import os
-    os.environ["HTTP_PROXY"] = "http://172.21.0.16:7890"
-    os.environ["HTTPS_PROXY"] = "http://172.21.0.16:7890"
+    # import os
+    # os.environ["HTTP_PROXY"] = "http://172.21.0.16:7890"
+    # os.environ["HTTPS_PROXY"] = "http://172.21.0.16:7890"
 
     def get_google_client(self, timeout: int):
         return genai.Client(

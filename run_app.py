@@ -102,10 +102,11 @@ def document_proc(
         docId = params.get("docId", "")
         callback_url = params.get("callback_url", "")
         mol_detect = params.get("mol_detect", False)
+        skip_layout = params.get("skip_layout", False)
         print('callback_url', callback_url, flush=True)
         try:
             print('start>>>extraction', flush=True)
-            print('file_type', type(file), flush=True)
+            print('file_type', file_type, type(file), flush=True)
             if file_type == "pdf":
                 extraction_outputs = extraction_proc.extraction(
                     args, 
@@ -116,16 +117,38 @@ def document_proc(
                     mol_detect=mol_detect
                 )
             elif file_type == "docx":
-                extraction_outputs = extraction_proc.parse_docx(file)
-                print('extraction_outputs', extraction_outputs, flush=True)
+                # 直接转换DOCX到markdown，避免PDF转换的不准确性
+                extraction_outputs = extraction_proc.parse_docx_direct(file)
             elif file_type == "pptx":
-                extraction_outputs = extraction_proc.parse_pptx(file)
-                print('extraction_outputs', extraction_outputs, flush=True)
+                # 将文件存储为临时文件，然后使用完整的extraction流程
+                temp_file_path = os.path.join(tempfile.gettempdir(), f"{docId}.{file_type}")
+                try:
+                    with open(temp_file_path, "wb") as f:
+                        f.write(file)
+                    
+                    extraction_outputs = extraction_proc.extraction(
+                        args, 
+                        temp_file_path, 
+                        callback_url=callback_url,
+                        docId=docId,
+                        file_type=file_type,
+                        mol_detect=False
+                    )
+                finally:
+                    # 确保临时文件被清理
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
             elif file_type == "jpg" or file_type == "png" or file_type == "jpeg":
                 # 将file存在临时文件里面，并提供path
                 temp_file_path = os.path.join(tempfile.gettempdir(), f"{docId}.{file_type}")
                 with open(temp_file_path, "wb") as f:
                     f.write(file)
+                
+                # 对于图片输入，根据skip_layout参数决定是否跳过layout布局检测，强制OCR检测
+                args['force_ocr'] = True
+                args['force_layout_block'] = "Text"
+                print(f"[ImageProcessing] skip_layout=True, forcing OCR and setting layout block to Text")
+
                 extraction_outputs = extraction_proc.extraction(
                     args, 
                     temp_file_path, 
@@ -138,15 +161,39 @@ def document_proc(
             result_queue.put({"docId": docId, "result": extraction_outputs})
             if callback_url:
                 time_str = datetime.now(beijing_tz).strftime("%H:%M:%S")
-                table_count = extraction_outputs[2]['table_count'] if file_type == "pdf" else 0
-                formula_count = extraction_outputs[2]['formula_count'] if file_type == "pdf" else 0
-                ocr_count = extraction_outputs[2]['ocr_count'] if file_type == "pdf" else 0
-                print('extraction_outputs[3]', extraction_outputs[3], flush=True)
+                
+                # Handle dictionary format
+                if isinstance(extraction_outputs, dict):
+                    markdown_text = extraction_outputs.get('text', '')
+                    metadata = extraction_outputs.get('metadata', {})
+                    info = extraction_outputs.get('info', {})
+                    images = extraction_outputs.get('images', {})
+                    mol_images = extraction_outputs.get('mol_images', {})
+                    table_contents = extraction_outputs.get('table_contents', {})
+                    table_count = info.get('table_count', 0)
+                    formula_count = info.get('formula_count', 0)
+                    ocr_count = info.get('ocr_count', 0)
+                else:
+                    # Backward compatibility with tuple format
+                    markdown_text = extraction_outputs[0] if len(extraction_outputs) > 0 else ''
+                    metadata = extraction_outputs[3] if len(extraction_outputs) > 3 else {}
+                    info = extraction_outputs[2] if len(extraction_outputs) > 2 else {}
+                    images = {}
+                    mol_images = {}
+                    table_contents = {}
+                    table_count = info.get('table_count', 0) if file_type == "pdf" else 0
+                    formula_count = info.get('formula_count', 0) if file_type == "pdf" else 0
+                    ocr_count = info.get('ocr_count', 0) if file_type == "pdf" else 0
+                
+                print('metadata', metadata, flush=True)
                 send_callback(callback_url, {
                     'status': True,
                     'messages': 'success',
-                    'markdown': extraction_outputs[0], 
-                    'metadata': json.dumps(extraction_outputs[3]),
+                    'markdown': markdown_text, 
+                    'metadata': json.dumps(metadata),
+                    'images': json.dumps(images),
+                    'mol_images': json.dumps(mol_images),
+                    'table_contents': json.dumps(table_contents),
                     'docId': docId,
                     'progress': 95,
                     'progress_text': '开始chunking和embedding\ntable数量 ' + str(table_count) + ' 公式数量 ' + str(formula_count) + ' ocr次数 ' + str(ocr_count) + '  ' + time_str
@@ -157,6 +204,9 @@ def document_proc(
                 "docId": docId, 
                 "markdown": ' ', 
                 "metadata": json.dumps({}),
+                'images': json.dumps({}),
+                'mol_images': json.dumps({}),
+                'table_contents': json.dumps({}),
                 'status': False,
                 'messages': 'success'
             })
@@ -190,7 +240,10 @@ async def document_extract(request):
         docId = form.get("docId", "")
         file_type = form.get("file_type", "pdf")  # pdf, docx, pptx, jpg, png, jpeg
         callback_url = form.get("callback_url", "")
-        mol_detect = form.get("mol_detect", False)
+        mol_detect = form.get("mol_detect", "False") == 'True'
+        skip_layout = form.get("skip_layout", "False") == 'True'  # 新增参数：是否跳过layout检测
+        print('mol_detect', form.get("mol_detect", ""), mol_detect, flush=True)
+        print('skip_layout', form.get("skip_layout", ""), skip_layout, flush=True)
 
         if not docId:
             return do_response(
@@ -206,8 +259,7 @@ async def document_extract(request):
 
         args = json.loads(form.get("args", "{}"))
         args['workers'] = 5
-        print('args', args, flush=True)
-
+        
         extra = json.loads(form.get("extra", "{}"))
         is_testing = extra.get("is_testing", False)
 
@@ -218,6 +270,7 @@ async def document_extract(request):
             "docId": docId,
             "callback_url": callback_url,
             "mol_detect": mol_detect,
+            "skip_layout": skip_layout,
         }
 
         params_queue.put(params)
@@ -250,7 +303,7 @@ def main():
 
     # 启动4个消费者进程
     processes = []
-    for _ in range(4):
+    for _ in range(2):
         process = multiprocessing.Process(
             target=document_proc,
             args=(

@@ -293,7 +293,7 @@ class MoleculeLayoutBuilder(BaseBuilder):
                         debug=False,
                         with_molscribe=True,
                         with_table=True,
-                        with_ocr=False,
+                        with_ocr=True,
                         with_html=False,
                         with_expand_mol=False,
                         return_realative_coordinates=True,
@@ -323,21 +323,35 @@ class MoleculeLayoutBuilder(BaseBuilder):
                         for mol_result in total_result_dict[page_key]:
                             if 'mol_box' in mol_result:
                                 mol_box = mol_result['mol_box']
+                                # print('mol_result', mol_result, flush=True)
                                 # Convert tuple to list format
                                 bbox = [mol_box[0], mol_box[1], mol_box[2], mol_box[3]]
+                                print('bbbbbbbbbbbox', bbox, flush=True)
+                                
+                                # Convert relative coordinates to absolute coordinates
+                                page_width = page.polygon.width
+                                page_height = page.polygon.height
+                                absolute_bbox = [
+                                    bbox[0] * page_width,   # x1 * width
+                                    bbox[1] * page_height,  # y1 * height
+                                    bbox[2] * page_width,   # x2 * width
+                                    bbox[3] * page_height   # y2 * height
+                                ]
+                                print(f'absolute_bbox: {absolute_bbox}, page_size: {page_width}x{page_height}', flush=True)
                                 
                                 # Extract additional data from _prediction_from_pdf result
                                 smiles = mol_result.get('post_SMILES', mol_result.get('Cano_SMILES', 'detected_molecule'))
-                                molblock = mol_result.get('post_molblock', '')
                                 
                                 molecules.append({
-                                    'bbox': bbox,
+                                    'bbox': absolute_bbox,
                                     'confidence': 0.9,  # Default confidence
                                     'data': {
-                                        'mol_box': mol_box,
+                                        'page_idx': page_idx,
+                                        'bbox': bbox,
                                         'label_box': mol_result.get('label_box_list', []),
+                                        'label': '/'.join(mol_result.get('label_string', [])),
                                         'smiles': smiles,
-                                        'molblock': molblock,
+                                        'mol_block': mol_result.get('post_molblock', ''),
                                         'assigned_idx': mol_result.get('assigned_idx', ''),
                                         'state': mol_result.get('state', 'unknown'),
                                         'mock': False
@@ -348,19 +362,34 @@ class MoleculeLayoutBuilder(BaseBuilder):
                     tables = []
                     if with_table_detect and page_key in total_table_result_dict:
                         for table_result in total_table_result_dict[page_key]:
-                            if table_result['src'] and table_result['src'].bbox:
-                                
-                                ori_bbox = table_result['src'].bbox
-                                bbox = [ori_bbox.x1, ori_bbox.y1, ori_bbox.x2, ori_bbox.y2]
-                                
+                            if table_result:
                                 # Extract HTML content if available
                                 html_content = table_result.get('html', '<table><tr><td>Molecular Data Table</td></tr></table>')
+                                # 如果没有smiles
+                                if "Cano_SMILES" not in html_content:
+                                    continue
+                                print('table_result', table_result, table_result['box'], flush=True)
+                                ori_bbox = table_result['box']
+                                bbox = [ori_bbox[0], ori_bbox[1], ori_bbox[2], ori_bbox[3]]
+                                print('ccccccccccbox', bbox, flush=True)
+                                
+                                # Compare with page dimensions to see if this is already absolute
+                                page_width = page.polygon.width
+                                page_height = page.polygon.height
+                                absolute_bbox = [
+                                    bbox[0] * page_width,   # x1 * width
+                                    bbox[1] * page_height,  # y1 * height
+                                    bbox[2] * page_width,   # x2 * width
+                                    bbox[3] * page_height   # y2 * height
+                                ]
+                                print(f'table_bbox: {bbox}, page_size: {page_width}x{page_height}, bbox_range: x=[{bbox[0]}-{bbox[2]}], y=[{bbox[1]}-{bbox[3]}]', flush=True)
                                 
                                 tables.append({
-                                    'bbox': bbox,
+                                    'bbox': absolute_bbox,
                                     'confidence': table_result.get('confidence', 0.9),
                                     'data': {
                                         'bbox': bbox,
+                                        'page_idx': page_idx,
                                         'table_type': 'molecule_table',
                                         'html_content': html_content,
                                         'dataframe': table_result.get('dataframe', None),
@@ -465,6 +494,7 @@ class MoleculeLayoutBuilder(BaseBuilder):
                 mol_table_block = MoleculeTable(
                     polygon=polygon,
                     page_id=page.page_id,
+                    structure_data={'page_idx': page_idx, 'bbox': bbox, 'html_content': html_content},
                     html=html_content,  # 直接使用html字段
                     confidence=table_detection.get('confidence', 1.0)
                 )
@@ -477,7 +507,8 @@ class MoleculeLayoutBuilder(BaseBuilder):
                     self._replace_overlapping_blocks(
                         page, 
                         molecule_blocks, 
-                        self.overlap_threshold
+                        self.overlap_threshold,
+                        target_types=[BlockTypes.Figure, BlockTypes.Picture]
                     )
                 
                 # Replace overlapping blocks for tables (specifically target Table blocks) 
@@ -496,6 +527,10 @@ class MoleculeLayoutBuilder(BaseBuilder):
         """
         Replace overlapping blocks with new molecule/table blocks
         
+        New logic: If any new_block overlaps with an existing_block above threshold,
+        the existing_block will be removed. All new_blocks will be added.
+        This handles cases where multiple molecules are within one figure.
+        
         Args:
             page: The page containing blocks to check
             new_blocks: List of new blocks to add  
@@ -509,37 +544,38 @@ class MoleculeLayoutBuilder(BaseBuilder):
         if exclude_types is None:
             exclude_types = []
             
-        blocks_to_replace = []  # (old_block, new_block) pairs
-        blocks_to_add = []      # new blocks with no overlap
+        blocks_to_remove = []  # existing blocks to remove
+        blocks_to_add = new_blocks  # all new blocks will be added
         
-        for new_block in new_blocks:
-            replaced_existing = False
-            
-            # Check overlap with existing blocks
-            for existing_block in page.current_children:  # Use current_children to get non-removed blocks
-                # Skip if block type is excluded
-                if existing_block.block_type in exclude_types:
-                    continue
-                    
-                # If target_types specified, only replace those types
-                if target_types and existing_block.block_type not in target_types:
-                    continue
+        # First, identify all existing blocks that should be removed
+        for existing_block in page.current_children:  # Use current_children to get non-removed blocks
+            # Skip if block type is excluded
+            if existing_block.block_type in exclude_types:
+                continue
                 
-                # Calculate overlap percentage
-                overlap_pct = existing_block.polygon.intersection_pct(new_block.polygon)
+            # If target_types specified, only consider those types
+            if target_types and existing_block.block_type not in target_types:
+                continue
+            
+            # Check if this existing block overlaps with any new block above threshold
+            should_remove = False
+            for new_block in new_blocks:
+                # Calculate overlap percentage (intersection area / new_block area)
+                overlap_pct = new_block.polygon.intersection_pct(existing_block.polygon)
+                print(f'overlap_pct: {overlap_pct:.3f} (intersection/new_block), existing_block: {existing_block.block_type}', flush=True)
                 
                 if overlap_pct >= threshold:
-                    # Replace this block
-                    blocks_to_replace.append((existing_block, new_block))
-                    replaced_existing = True
-                    break  # Each new block replaces at most one existing block
+                    should_remove = True
+                    print(f'🗑️  Will remove existing {existing_block.block_type} due to overlap {overlap_pct:.3f} with new molecule', flush=True)
+                    break  # No need to check other new blocks for this existing block
                     
-            if not replaced_existing:
-                # No overlap found, add as new block
-                blocks_to_add.append(new_block)
+            if should_remove and existing_block not in blocks_to_remove:
+                blocks_to_remove.append(existing_block)
         
-        # Execute the replacements and additions
-        self._execute_block_operations(page, blocks_to_replace, blocks_to_add)
+        print(f'📊 Summary: Removing {len(blocks_to_remove)} existing blocks, Adding {len(blocks_to_add)} new blocks', flush=True)
+        
+        # Execute the operations
+        self._execute_block_operations_v2(page, blocks_to_remove, blocks_to_add)
 
     def _execute_block_operations(self, page: PageGroup, blocks_to_replace: List, blocks_to_add: List):
         """
@@ -562,4 +598,59 @@ class MoleculeLayoutBuilder(BaseBuilder):
             block_to_add.page_id = page.page_id
             page.add_full_block(block_to_add)
             # Also add to page structure for proper ordering
-            page.structure.append(block_to_add.id) 
+            page.structure.append(block_to_add.id)
+
+    def _execute_block_operations_v2(self, page: PageGroup, blocks_to_remove: List, blocks_to_add: List):
+        """
+        Execute block removal and addition operations using proper page methods
+        Maintains correct rendering order by inserting new blocks at removed blocks' positions
+        
+        Args:
+            page: The page to modify
+            blocks_to_remove: List of existing blocks to remove
+            blocks_to_add: List of new blocks to add
+        """
+        if not blocks_to_remove and not blocks_to_add:
+            return
+            
+        # Step 1: Record positions of blocks to be removed
+        removal_positions = {}  # block_id -> position in structure
+        if page.structure:
+            for i, block_id in enumerate(page.structure):
+                for block_to_remove in blocks_to_remove:
+                    if block_id == block_to_remove.id:
+                        removal_positions[block_to_remove.id] = i
+                        break
+        
+        # Step 2: Remove existing blocks by marking them as removed
+        for block_to_remove in blocks_to_remove:
+            print(f'🔥 Removing existing block: {block_to_remove.block_type} at {block_to_remove.polygon.bbox}', flush=True)
+            block_to_remove.removed = True
+        
+        # Step 3: Add new blocks and update structure with correct positioning
+        for block_to_add in blocks_to_add:
+            print(f'✅ Adding new block: {block_to_add.block_type} at {block_to_add.polygon.bbox}', flush=True)
+            # Set proper page_id for the new block
+            block_to_add.page_id = page.page_id
+            page.add_full_block(block_to_add)
+        
+        # Step 4: Rebuild page structure with correct ordering
+        if page.structure and removal_positions:
+            # Find the earliest position where a block was removed
+            earliest_position = min(removal_positions.values())
+            print(f'📍 Inserting new blocks at position {earliest_position} (where removed blocks were)', flush=True)
+            
+            # Remove all removed block IDs from structure
+            original_structure = page.structure[:]
+            page.structure = [block_id for block_id in page.structure 
+                            if not any(block_id == removed_block.id for removed_block in blocks_to_remove)]
+            
+            # Insert new block IDs at the earliest removal position
+            new_block_ids = [block.id for block in blocks_to_add]
+            page.structure[earliest_position:earliest_position] = new_block_ids
+            
+            print(f'🔄 Structure updated: {len(original_structure)} -> {len(page.structure)} blocks', flush=True)
+        elif page.structure:
+            # Fallback: append to end if no removal positions found
+            for block_to_add in blocks_to_add:
+                page.structure.append(block_to_add.id) 

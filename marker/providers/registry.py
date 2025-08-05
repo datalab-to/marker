@@ -61,8 +61,16 @@ def provider_from_filepath(filepath: str, file_type: str='pdf'):
         return ImageProvider
     elif file_type == 'pdf':
         return PdfProvider
-    else:
-        return PdfProvider
+    elif file_type == 'docx' or file_type == 'doc':
+        return DocumentProvider
+    elif file_type == 'pptx' or file_type == 'ppt':
+        return PowerPointProvider
+    elif file_type == 'epub':
+        return EpubProvider
+    elif file_type == 'html':
+        return HTMLProvider
+    
+    # If file_type is not explicitly handled, fall back to content-based detection
     if filetype.image_match(filepath) is not None:
         return ImageProvider
     if file_match(filepath, load_matchers("pdf")) is not None:

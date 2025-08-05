@@ -75,19 +75,40 @@ class BaseProvider:
     def get_font_css():
         from weasyprint import CSS
         from weasyprint.text.fonts import FontConfiguration
+        import os
 
         font_config = FontConfiguration()
-        css = CSS(string=f'''
-            @font-face {{
-                font-family: GoNotoCurrent-Regular;
-                src: url({settings.FONT_PATH});
-                font-display: swap;
-            }}
+        
+        # Check if font file exists and create proper file URI
+        font_src = ""
+        if os.path.exists(settings.FONT_PATH):
+            # Convert to absolute path and use file:// URI scheme
+            abs_font_path = os.path.abspath(settings.FONT_PATH)
+            font_src = f"url(file://{abs_font_path})"
+        
+        # Create CSS with proper font fallback
+        css_content = f'''
             body {{
-                font-family: {settings.FONT_NAME.split(".")[0]}, sans-serif;
+                font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
                 font-variant-ligatures: none;
                 font-feature-settings: "liga" 0;
-                text-rendering: optimizeLegibility;
             }}
-            ''', font_config=font_config)
+        '''
+        
+        # Only add @font-face if font file exists
+        if font_src:
+            css_content = f'''
+                @font-face {{
+                    font-family: GoNotoCurrent-Regular;
+                    src: {font_src};
+                    font-display: swap;
+                }}
+                body {{
+                    font-family: GoNotoCurrent-Regular, "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+                    font-variant-ligatures: none;
+                    font-feature-settings: "liga" 0;
+                }}
+            '''
+        
+        css = CSS(string=css_content, font_config=font_config)
         return css

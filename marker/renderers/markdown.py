@@ -57,6 +57,7 @@ class Markdownify(MarkdownConverter):
         self.page_separator = page_separator
         self.inline_math_delimiters = inline_math_delimiters
         self.block_math_delimiters = block_math_delimiters
+        self.image_mappings = {}  # Store img_id -> url mappings
 
     def convert_div(self, el, text, convert_as_inline):
         is_page = el.has_attr('class') and el['class'][0] == 'page'
@@ -192,6 +193,8 @@ class Markdownify(MarkdownConverter):
 class MarkdownOutput(BaseModel):
     markdown: str
     images: dict
+    mol_images: dict
+    table_contents: dict
     metadata: dict
 
 
@@ -217,14 +220,78 @@ class MarkdownRenderer(HTMLRenderer):
             block_math_delimiters=self.block_math_delimiters
         )
 
+    def process_images_for_markdown(self, images):
+        """
+        Process images dict to handle S3 URLs and local images appropriately for Markdown
+        
+        Args:
+            images: Dict containing image data (either URLs or binary data)
+            
+        Returns:
+            Processed images dict suitable for Markdown output
+        """
+        processed_images = {}
+        picture_images = {}
+        molecule_img_images = {}
+        molecule_table_images = {}
+        
+        for key, value in images.items():
+            if isinstance(value, dict) and value.get("extra_type", "") == "molecule_img":
+                # For S3 images, we store the URL info but don't include binary data
+                molecule_img_images[key] = {
+                    "url": value["url"],
+                    "type": "s3",
+                    "key": value.get("key", ""),
+                    "extra_type": value.get("extra_type", ""),
+                    "smiles": value.get("smiles", ""),
+                    "mol_block": value.get("mol_block", ""),
+                    "label": value.get("label", ""),
+                    "page_idx": value.get("page_idx", ""),
+                    "bbox": value.get("bbox", []),
+                    "original_name": value.get("original_name", str(key))
+                }
+            elif isinstance(value, dict) and value.get("extra_type", "") == "molecule_table":
+                molecule_table_images[key] = {
+                    "url": value["url"],
+                    "type": "s3",
+                    "key": value.get("key", ""),
+                    "extra_type": value.get("extra_type", ""),
+                    "html_content": value.get("html_content", ""),
+                    "page_idx": value.get("page_idx", ""),
+                    "bbox": value.get("bbox", ""),
+                    "original_name": value.get("original_name", str(key))
+                }
+            elif isinstance(value, dict) and value.get("extra_type", "") == "picture":
+                picture_images[key] = {
+                    "url": value["url"],
+                    "type": "s3",
+                    "key": value.get("key", ""),
+                    "extra_type": value.get("extra_type", ""),
+                    "original_name": value.get("original_name", str(key))
+                }
+            else:
+                # For local/base64 images, keep as is
+                processed_images[key] = value
+                
+        return processed_images, picture_images, molecule_img_images, molecule_table_images
 
     def __call__(self, document: Document) -> MarkdownOutput:
         document_output = document.render()
         full_html, images = self.extract_html(document, document_output)
+        
+        # Extract image mappings and table contents from images dict
+        # Process images for Markdown
+        _, picture_images, molecule_img_images, molecule_table_images = self.process_images_for_markdown(images)
+        print("@@@@ picture_images: ", picture_images)
+        print("@@@@ molecule_img_images: ", molecule_img_images)
+        print("@@@@ molecule_table_images: ", molecule_table_images)
         markdown = self.md_cls.convert(full_html)
         markdown = cleanup_text(markdown)
+        
         return MarkdownOutput(
             markdown=markdown,
-            images=images,
+            images=picture_images,
+            mol_images=molecule_img_images,
+            table_contents=molecule_table_images,
             metadata=self.generate_document_metadata(document, document_output)
         )

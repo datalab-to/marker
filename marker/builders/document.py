@@ -28,6 +28,10 @@ class DocumentBuilder(BaseBuilder):
         int,
         "DPI setting for high-resolution page images used for OCR.",
     ] = 192
+    original_image_dpi: Annotated[
+        int,
+        "DPI setting for original-resolution page images for high-quality processing.",
+    ] = 300
     disable_ocr: Annotated[
         bool,
         "Disable OCR processing.",
@@ -72,11 +76,13 @@ class DocumentBuilder(BaseBuilder):
         PageGroupClass: PageGroup = get_block_class(BlockTypes.Page)
         lowres_images = provider.get_images(provider.page_range, self.lowres_image_dpi)
         highres_images = provider.get_images(provider.page_range, self.highres_image_dpi)
+        original_images = provider.get_images(provider.page_range, self.original_image_dpi)
         initial_pages = [
             PageGroupClass(
                 page_id=p,
                 lowres_image=lowres_images[i],
                 highres_image=highres_images[i],
+                original_image=original_images[i],
                 polygon=provider.get_page_bbox(p),
                 refs=provider.get_page_refs(p)
             ) for i, p in enumerate(provider.page_range)

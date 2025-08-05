@@ -43,7 +43,7 @@ class PdfProvider(BaseProvider):
     flatten_pdf: Annotated[
         bool,
         "Whether to flatten the PDF structure.",
-    ] = True
+    ] = True  # True
     force_ocr: Annotated[
         bool,
         "Whether to force OCR on the whole document.",
@@ -81,6 +81,10 @@ class PdfProvider(BaseProvider):
         super().__init__(filepath, config)
 
         self.filepath = filepath
+
+        # 如果config中指定了flatten_pdf，则使用config中的值覆盖默认值
+        if config and 'flatten_pdf' in config:
+            self.flatten_pdf = config['flatten_pdf']
 
         with self.get_doc() as doc:
             self.page_count = len(doc)

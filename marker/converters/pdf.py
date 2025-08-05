@@ -154,7 +154,7 @@ class PdfConverter(BaseConverter):
             
             # 设置默认配置
             if not processor_config.get("device"):
-                processor_config["device"] = "cuda" if settings.TORCH_DEVICE_MODEL == "cuda" else "cpu"
+                processor_config["device"] = "cuda"
             
             try:
                 self.molecule_layout_builder = self.resolve_dependencies(
@@ -173,7 +173,14 @@ class PdfConverter(BaseConverter):
         layout_builder = self.resolve_dependencies(self.layout_builder_class)
         line_builder = self.resolve_dependencies(LineBuilder)
         ocr_builder = self.resolve_dependencies(OcrBuilder)
-        provider = provider_cls(filepath, self.config)
+        
+        # 如果启用了分子检测，则设置flatten_pdf为False
+        provider_config = self.config.copy() if self.config else {}
+        if self.use_molecule_detection:
+            provider_config['flatten_pdf'] = False
+            print(f"[MoleculeDetection] Setting flatten_pdf=False due to molecule detection enabled")
+        
+        provider = provider_cls(filepath, provider_config)
         document = DocumentBuilder(self.config)(
             provider, 
             layout_builder, 

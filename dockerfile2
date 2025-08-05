@@ -1,0 +1,14 @@
+FROM marker_with_mol:v5
+
+RUN apt-get install -y \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei \
+        fonts-wqy-microhei \
+        fonts-arphic-ukai \
+        fonts-arphic-uming \
+        fontconfig
+
+RUN conda run -n myenv conda install -y -c conda-forge cairo pango gdk-pixbuf libffi
+RUN conda run -n myenv pip install boto3 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+RUN conda run -n myenv pip install weasyprint mammoth -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+

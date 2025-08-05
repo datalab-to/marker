@@ -11,6 +11,15 @@ class Picture(Block):
         child_ref_blocks = [block for block in child_blocks if block.id.block_type == BlockTypes.Reference]
         html = super().assemble_html(document, child_ref_blocks, parent_structure)
 
+        # Use consistent placeholder ID format matching HTMLRenderer
+        imgid = str(self.id)
+        print("@@@@####picture imgid: ", imgid)
+
         if self.description:
-            return html + f"<p role='img' data-original-image-id='{self.id}'>Image {self.id} description: {self.description}</p>"
-        return html
+            # Include both placeholder and description
+            placeholder = f"<p>_placeholder_imgid_{imgid}</p>"
+            description = f"<p role='img' data-original-image-id='{self.id}'>Image {self.id} description: {self.description}</p>"
+            return html + placeholder + description
+        # else:
+            # Just placeholder
+        return f"<p>_placeholder_imgid_{imgid}</p>"

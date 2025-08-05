@@ -22,6 +22,7 @@ class PageGroup(Group):
     # This is bytes if it is serialized
     lowres_image: Image.Image | None | bytes = None
     highres_image: Image.Image | None | bytes = None
+    original_image: Image.Image | None | bytes = None
     children: List[Union[Any, Block]] | None = None
     layout_sliced: bool = (
         False  # Whether the layout model had to slice the image (order may be wrong)
@@ -50,10 +51,17 @@ class PageGroup(Group):
         self,
         *args,
         highres: bool = False,
+        original: bool = False,
         remove_blocks: Sequence[BlockTypes] | None = None,
         **kwargs,
     ):
-        image = self.highres_image if highres else self.lowres_image
+        if original:
+            image = self.original_image
+            # Fallback to highres if original is not available
+            if image is None:
+                image = self.highres_image
+        else:
+            image = self.highres_image if highres else self.lowres_image
 
         # Avoid double OCR for certain elements
         if remove_blocks:

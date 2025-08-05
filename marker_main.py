@@ -52,7 +52,14 @@ class ExtractionProc:
         
         # 将所有文本拼接成一个字符串
         text = "\n".join(full_text)
-        return text, None, None
+        return {
+            'text': text,
+            'images': {},
+            'info': {'table_count': 0, 'formula_count': 0, 'ocr_count': 0},
+            'metadata': {},
+            'mol_images': {},
+            'table_contents': {}
+        }
 
     def parse_pptx(self, file_byte):
         # 使用python-pptx库解析pptx文件
@@ -74,12 +81,131 @@ class ExtractionProc:
         
         # 将所有文本拼接成一个字符串
         text = "\n".join(full_text)
-        return text, None, None
+        return {
+            'text': text,
+            'images': {},
+            'info': {'table_count': 0, 'formula_count': 0, 'ocr_count': 0},
+            'metadata': {},
+            'mol_images': {},
+            'table_contents': {}
+        }
 
     def parse_txt(self, file_byte):
         # 这个不需解析，返回文本
         full_text = file_byte.decode('utf-8')
-        return full_text, None, None
+        return {
+            'text': full_text,
+            'images': {},
+            'info': {'table_count': 0, 'formula_count': 0, 'ocr_count': 0},
+            'metadata': {},
+            'mol_images': {},
+            'table_contents': {}
+        }
+
+    def parse_docx_direct(self, file_byte):
+        """Parse DOCX directly to markdown, bypassing PDF conversion for better accuracy"""
+        from io import BytesIO
+        from markdownify import markdownify as md
+        import mammoth
+        import re
+        import base64
+        
+        def convert_image_to_base64(image):
+            """Convert mammoth image to base64 data URI"""
+            try:
+                with image.open() as image_bytes:
+                    return "data:" + image.content_type + ";base64," + base64.b64encode(image_bytes.read()).decode()
+            except Exception as e:
+                print(f"Failed to convert image: {e}")
+                return ""
+        
+        # 创建BytesIO对象
+        docx_file = BytesIO(file_byte)
+        
+        # Configure style mapping to preserve heading levels
+        style_map = """
+        p[style-name='Heading 1'] => h1:fresh
+        p[style-name='Heading 2'] => h2:fresh  
+        p[style-name='Heading 3'] => h3:fresh
+        p[style-name='Heading 4'] => h4:fresh
+        p[style-name='Heading 5'] => h5:fresh
+        p[style-name='Heading 6'] => h6:fresh
+        p[style-name='标题 1'] => h1:fresh
+        p[style-name='标题 2'] => h2:fresh
+        p[style-name='标题 3'] => h3:fresh
+        p[style-name='标题 4'] => h4:fresh
+        p[style-name='标题 5'] => h5:fresh
+        p[style-name='标题 6'] => h6:fresh
+        """
+        
+        # Configure mammoth options for better conversion
+        convert_options = {
+            "convert_image": mammoth.images.img_element(lambda image: {
+                "src": convert_image_to_base64(image)
+            }),
+            "ignore_empty_paragraphs": False,
+            "style_map": style_map
+        }
+        
+        # Convert DOCX to HTML
+        result = mammoth.convert_to_html(docx_file, **convert_options)
+        html = result.value
+        
+        # Print conversion messages if any
+        if result.messages:
+            print(f"Mammoth conversion messages: {result.messages}", flush=True)
+        
+        print(f"Generated HTML length: {len(html)} characters", flush=True)
+        if html:
+            preview = html[:500].replace('\n', ' ')
+            print(f"HTML preview: {preview}...", flush=True)
+        
+        # Convert HTML directly to markdown
+        markdown_text = md(
+            html,
+            heading_style="ATX",  # Use # ## ### style
+            wrap=True,
+            wrap_width=80,
+            convert=['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'ul', 'ol', 'li', 'table', 'tr', 'td', 'th']
+        )
+        
+        print(f"Generated markdown length: {len(markdown_text)} characters", flush=True)
+        print(f"Markdown preview: {markdown_text[:500]}...", flush=True)
+        
+        # Extract table of contents from HTML
+        def extract_toc_from_html(html):
+            toc = []
+            heading_pattern = r'<h([1-6])[^>]*>([^<]+)</h[1-6]>'
+            matches = re.findall(heading_pattern, html)
+            
+            for level, title in matches:
+                toc.append({
+                    "title": title.strip(),
+                    "heading_level": int(level),
+                    "page_id": 0,
+                    "polygon": [[0, 0], [100, 0], [100, 20], [0, 20]]  # Dummy coordinates
+                })
+            
+            return toc
+        
+        return {
+            'text': markdown_text,
+            'images': {},  # TODO: Extract and process images if needed
+            'info': {'table_count': html.count('<table'), 'formula_count': 0, 'ocr_count': 0},
+            'metadata': {
+                'table_of_contents': extract_toc_from_html(html),
+                'page_stats': [{
+                    'page_id': 0,
+                    'text_extraction_method': 'html_direct',
+                    'block_counts': [['Text', html.count('<p>')], ['SectionHeader', sum(html.count(f'<h{i}') for i in range(1, 7))]],
+                    'block_metadata': {'llm_request_count': 0, 'llm_error_count': 0, 'llm_tokens_used': 0},
+                    'page_header': '',
+                    'page_footer': ''
+                }]
+            },
+            'mol_images': {},
+            'table_contents': {}
+        }
 
     def extraction(self, args, file_byte, callback_url='', docId='', file_type='pdf', mol_detect=False):
         start = time.time()
@@ -89,6 +215,7 @@ class ExtractionProc:
             'output_format': args.get('output_format', 'markdown'),
             'page_range': args.get('page_range', None),
             'force_ocr': args.get('force_ocr', False),
+            'force_layout_block': args.get('force_layout_block', None),
             'processors': args.get('processors', None),
             'config_json': args.get('config_json', None),
             'languages': args.get('languages', None),
@@ -119,9 +246,22 @@ class ExtractionProc:
         # 统计metadata中有多少page 多少表格 多少公式和ocr次数
         info = self.count_table_formula(rendered.metadata)
         full_text = rendered.markdown
+        
+        # Extract image mappings and table contents if available
+        table_contents = getattr(rendered, 'table_contents', {})
+        images = getattr(rendered, 'images', {})
+        mol_images = getattr(rendered, 'mol_images', {})
+
         print('use time: ', time.time() - start)
 
-        return full_text, None, info, rendered.metadata
+        return {
+            'text': full_text,
+            'images': images,
+            'info': info,
+            'metadata': rendered.metadata,
+            'mol_images': mol_images,
+            'table_contents': table_contents
+        }
     
     def count_table_formula(self, metadata):
         table_count = 0

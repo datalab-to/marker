@@ -161,7 +161,7 @@ def test_molecule_extraction(
     start_time = time.time()
     
     try:
-        full_text, _, info, metadata = proc.extraction(
+        result = proc.extraction(
             args=args,
             file_byte=file_byte,
             callback_url=callback_url,
@@ -175,18 +175,40 @@ def test_molecule_extraction(
         print("✅ Extraction完成!")
         print(f"⏱️  处理时间: {processing_time:.2f}秒")
         
+        # Handle dictionary format
+        if isinstance(result, dict):
+            full_text = result.get('text', '')
+            info = result.get('info', {})
+            metadata = result.get('metadata', {})
+            image_mappings = result.get('image_mappings', {})
+            table_contents = result.get('table_contents', {})
+        else:
+            # Backward compatibility with tuple format
+            if len(result) >= 4:
+                full_text, _, info, metadata = result[:4]
+                image_mappings = result[4] if len(result) > 4 else {}
+                table_contents = result[5] if len(result) > 5 else {}
+            else:
+                print(f"❌ Unexpected result format: {len(result)} items")
+                return {'success': False, 'error': 'Unexpected result format'}
+        
         # 分析结果
         print("\n📊 提取结果分析:")
         print(f"  - 文本长度: {len(full_text)} 字符")
         print(f"  - 表格数量: {info.get('table_count', 0)}")
         print(f"  - 公式数量: {info.get('formula_count', 0)}")
         print(f"  - OCR页面数: {info.get('ocr_count', 0)}")
+        print(f"  - 图片映射数量: {len(image_mappings)}")
+        print(f"  - 表格内容数量: {len(table_contents)}")
         
-        # 分子识别结果分析
-        mol_count = full_text.count('<mol>')
-        mol_table_count = full_text.count('<mol_table>')
+        # 分子识别结果分析 - 检查新的标签格式
+        mol_count = full_text.count('<gpt_mol_img')
+        mol_table_count = full_text.count('<gpt_mol_table_img')
+        img_count = full_text.count('<gpt_img')
+        
         print(f"  - 分子结构数量: {mol_count}")
         print(f"  - 分子表格数量: {mol_table_count}")
+        print(f"  - 常规图片数量: {img_count}")
         
         # 保存结果
         output_file = os.path.join(output_dir, f"{doc_id}_with_molecules.md")
@@ -200,12 +222,26 @@ def test_molecule_extraction(
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         print(f"📋 元数据已保存到: {metadata_file}")
         
+        # 保存image mappings
+        if image_mappings:
+            mappings_file = os.path.join(output_dir, f"{doc_id}_image_mappings.json")
+            with open(mappings_file, 'w', encoding='utf-8') as f:
+                json.dump(image_mappings, f, indent=2, ensure_ascii=False)
+            print(f"🖼️ 图片映射已保存到: {mappings_file}")
+        
+        # 保存table contents
+        if table_contents:
+            table_file = os.path.join(output_dir, f"{doc_id}_table_contents.json")
+            with open(table_file, 'w', encoding='utf-8') as f:
+                json.dump(table_contents, f, indent=2, ensure_ascii=False)
+            print(f"📊 表格内容已保存到: {table_file}")
+        
         # 显示示例输出
         if mol_count > 0 or mol_table_count > 0:
             print("\n🧬 分子识别示例输出:")
             lines = full_text.split('\n')
             for i, line in enumerate(lines):
-                if '<mol>' in line or '<mol_table>' in line:
+                if '<gpt_mol_img' in line or '<gpt_mol_table_img' in line:
                     start_idx = max(0, i-2)
                     end_idx = min(len(lines), i+3)
                     print("  " + "-" * 40)
@@ -220,9 +256,12 @@ def test_molecule_extraction(
             'full_text': full_text,
             'info': info,
             'metadata': metadata,
+            'image_mappings': image_mappings,
+            'table_contents': table_contents,
             'processing_time': processing_time,
             'mol_count': mol_count,
             'mol_table_count': mol_table_count,
+            'img_count': img_count,
             'output_file': output_file
         }
         
@@ -420,7 +459,7 @@ def test_molecule_extraction_with_mock(
     start_time = time.time()
     
     try:
-        full_text, _, info, metadata = proc.extraction(
+        result = proc.extraction(
             args=args,
             file_byte=file_byte,
             callback_url=callback_url,
@@ -434,18 +473,40 @@ def test_molecule_extraction_with_mock(
         print("✅ Extraction完成!")
         print(f"⏱️  处理时间: {processing_time:.2f}秒")
         
+        # Handle dictionary format
+        if isinstance(result, dict):
+            full_text = result.get('text', '')
+            info = result.get('info', {})
+            metadata = result.get('metadata', {})
+            image_mappings = result.get('image_mappings', {})
+            table_contents = result.get('table_contents', {})
+        else:
+            # Backward compatibility with tuple format
+            if len(result) >= 4:
+                full_text, _, info, metadata = result[:4]
+                image_mappings = result[4] if len(result) > 4 else {}
+                table_contents = result[5] if len(result) > 5 else {}
+            else:
+                print(f"❌ Unexpected result format: {len(result)} items")
+                return {'success': False, 'error': 'Unexpected result format'}
+        
         # 分析结果
         print("\n📊 提取结果分析:")
         print(f"  - 文本长度: {len(full_text)} 字符")
         print(f"  - 表格数量: {info.get('table_count', 0)}")
         print(f"  - 公式数量: {info.get('formula_count', 0)}")
         print(f"  - OCR页面数: {info.get('ocr_count', 0)}")
+        print(f"  - 图片映射数量: {len(image_mappings)}")
+        print(f"  - 表格内容数量: {len(table_contents)}")
         
-        # 分子识别结果分析
-        mol_count = full_text.count('<mol>')
-        mol_table_count = full_text.count('<mol_table>')
+        # 分子识别结果分析 - 检查新的标签格式
+        mol_count = full_text.count('<gpt_mol_img')
+        mol_table_count = full_text.count('<gpt_mol_table_img')
+        img_count = full_text.count('<gpt_img')
+        
         print(f"  - 分子结构数量: {mol_count}")
         print(f"  - 分子表格数量: {mol_table_count}")
+        print(f"  - 常规图片数量: {img_count}")
         
         # 保存结果
         output_file = os.path.join(output_dir, f"{doc_id}_with_molecules.md")
@@ -459,12 +520,26 @@ def test_molecule_extraction_with_mock(
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         print(f"📋 元数据已保存到: {metadata_file}")
         
+        # 保存image mappings
+        if image_mappings:
+            mappings_file = os.path.join(output_dir, f"{doc_id}_image_mappings.json")
+            with open(mappings_file, 'w', encoding='utf-8') as f:
+                json.dump(image_mappings, f, indent=2, ensure_ascii=False)
+            print(f"🖼️ 图片映射已保存到: {mappings_file}")
+        
+        # 保存table contents
+        if table_contents:
+            table_file = os.path.join(output_dir, f"{doc_id}_table_contents.json")
+            with open(table_file, 'w', encoding='utf-8') as f:
+                json.dump(table_contents, f, indent=2, ensure_ascii=False)
+            print(f"📊 表格内容已保存到: {table_file}")
+        
         # 显示示例输出
         if mol_count > 0 or mol_table_count > 0:
             print("\n🧬 分子识别示例输出:")
             lines = full_text.split('\n')
             for i, line in enumerate(lines):
-                if '<mol>' in line or '<mol_table>' in line:
+                if '<gpt_mol_img' in line or '<gpt_mol_table_img' in line:
                     start_idx = max(0, i-2)
                     end_idx = min(len(lines), i+3)
                     print("  " + "-" * 40)
@@ -474,14 +549,18 @@ def test_molecule_extraction_with_mock(
                     print("  " + "-" * 40)
                     break
         
+        print('image_mappings', image_mappings)
         return {
             'success': True,
             'full_text': full_text,
             'info': info,
             'metadata': metadata,
+            'image_mappings': image_mappings,
+            'table_contents': table_contents,
             'processing_time': processing_time,
             'mol_count': mol_count,
             'mol_table_count': mol_table_count,
+            'img_count': img_count,
             'output_file': output_file
         }
         
