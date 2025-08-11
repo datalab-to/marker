@@ -19,6 +19,7 @@ from marker.schema.registry import get_block_class
 from marker.schema.text.line import Line
 from marker.settings import settings
 from marker.util import matrix_intersection_area, sort_text_lines
+from marker.utils.image import is_blank_image
 
 
 class LineBuilder(BaseBuilder):
@@ -325,37 +326,6 @@ class LineBuilder(BaseBuilder):
             text_okay = True
         return text_okay
 
-    def is_blank_slice(self, slice_image: Image.Image):
-        image = np.asarray(slice_image)
-        if (
-            image is None
-            or image.size == 0
-            or image.shape[0] == 0
-            or image.shape[1] == 0
-        ):
-            # Handle empty image case
-            return True
-
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        gray = cv2.GaussianBlur(gray, (3, 3), 0)
-
-        # Adaptive threshold (inverse for text as white)
-        binarized = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 15
-        )
-
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-            binarized, connectivity=8
-        )
-        cleaned = np.zeros_like(binarized)
-        for i in range(1, num_labels):  # skip background
-            cleaned[labels == i] = 255
-
-        kernel = np.ones((1, 5), np.uint8)
-        dilated = cv2.dilate(cleaned, kernel, iterations=3)
-        b = dilated / 255
-        return b.sum() == 0
-
     def filter_blank_lines(self, page: PageGroup, lines: List[ProviderOutput]):
         page_size = (page.polygon.width, page.polygon.height)
         page_image = page.get_image()
@@ -368,7 +338,7 @@ class LineBuilder(BaseBuilder):
             )
             line_bbox = line_polygon_rescaled.fit_to_bounds((0, 0, *image_size)).bbox
 
-            if not self.is_blank_slice(page_image.crop(line_bbox)):
+            if not is_blank_image(page_image.crop(line_bbox)):
                 good_lines.append(line)
 
         return good_lines
