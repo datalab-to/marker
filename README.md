@@ -1,5 +1,15 @@
 # Marker
 
+<!-- Keep these links. Translations will automatically update with the README. -->
+[Deutsch](https://zdoc.app/de/datalab-to/marker) | 
+[Español](https://zdoc.app/es/datalab-to/marker) | 
+[français](https://zdoc.app/fr/datalab-to/marker) | 
+[日本語](https://zdoc.app/ja/datalab-to/marker) | 
+[한국어](https://zdoc.app/ko/datalab-to/marker) | 
+[Português](https://zdoc.app/pt/datalab-to/marker) | 
+[Русский](https://zdoc.app/ru/datalab-to/marker) | 
+[中文](https://zdoc.app/zh/datalab-to/marker)
+
 Marker converts documents to markdown, JSON, chunks, and HTML quickly and accurately.
 
 - Converts PDF, image, PPTX, DOCX, XLSX, HTML, EPUB files in all languages
