@@ -62,6 +62,8 @@ class LayoutBuilder(BaseBuilder):
             return self.layout_batch_size
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 12
+        elif settings.TORCH_DEVICE_MODEL == "mps":
+            return 8
         return 6
 
     def forced_layout(self, pages: List[PageGroup]) -> List[LayoutResult]:
@@ -132,7 +134,8 @@ class LayoutBuilder(BaseBuilder):
         self, pages: List[PageGroup], layout_results: List[LayoutResult]
     ):
         for page, layout_result in zip(pages, layout_results):
-            layout_page_size = PolygonBox.from_bbox(layout_result.image_bbox).size
+            layout_page_size = PolygonBox.from_bbox(
+                layout_result.image_bbox).size
             provider_page_size = page.polygon.size
             page.layout_sliced = (
                 layout_result.sliced

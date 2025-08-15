@@ -103,6 +103,10 @@ class LineBuilder(BaseBuilder):
             return self.detection_batch_size
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 10
+        elif settings.TORCH_DEVICE_MODEL == "mps":
+
+            # Detection runs on CPU when device is MPS; bump slightly to amortize overhead
+            return 6
         return 4
 
     def get_ocr_error_batch_size(self):
@@ -110,6 +114,8 @@ class LineBuilder(BaseBuilder):
             return self.ocr_error_batch_size
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 14
+        elif settings.TORCH_DEVICE_MODEL == "mps":
+            return 8
         return 4
 
     def get_detection_results(
@@ -176,9 +182,11 @@ class LineBuilder(BaseBuilder):
 
         # Note: run_detection is longer than page_images, since it has a value for each page, not just good ones
         # Detection results and inline detection results are for every page (we use run_detection to make the list full length)
-        detection_results = self.get_detection_results(page_images, run_detection)
+        detection_results = self.get_detection_results(
+            page_images, run_detection)
 
-        assert len(detection_results) == len(layout_good) == len(document.pages)
+        assert len(detection_results) == len(
+            layout_good) == len(document.pages)
         for document_page, detection_result, provider_lines_good in zip(
             document.pages, detection_results, layout_good
         ):
@@ -208,10 +216,12 @@ class LineBuilder(BaseBuilder):
                 boxes_to_ocr[document_page.page_id].extend(detection_boxes)
 
         # Dummy lines to merge into the document - Contains no spans, will be filled in later by OCRBuilder
-        ocr_lines = {document_page.page_id: [] for document_page in document.pages}
+        ocr_lines = {document_page.page_id: []
+                     for document_page in document.pages}
         for page_id, page_ocr_boxes in boxes_to_ocr.items():
             page_size = provider.get_page_bbox(page_id).size
-            image_size = document.get_page(page_id).get_image(highres=False).size
+            image_size = document.get_page(
+                page_id).get_image(highres=False).size
             for box_to_ocr in page_ocr_boxes:
                 line_polygon = PolygonBox(polygon=box_to_ocr.polygon).rescale(
                     image_size, page_size
@@ -264,7 +274,8 @@ class LineBuilder(BaseBuilder):
             if bbox[3] > page_bbox[3]:
                 return False
 
-        intersection_matrix = matrix_intersection_area(provider_bboxes, provider_bboxes)
+        intersection_matrix = matrix_intersection_area(
+            provider_bboxes, provider_bboxes)
         for i, line in enumerate(provider_lines):
             intersect_counts = np.sum(
                 intersection_matrix[i]
@@ -302,7 +313,8 @@ class LineBuilder(BaseBuilder):
         if len(provider_bboxes) == 0:
             return False
 
-        intersection_matrix = matrix_intersection_area(layout_bboxes, provider_bboxes)
+        intersection_matrix = matrix_intersection_area(
+            layout_bboxes, provider_bboxes)
 
         for idx, layout_block in enumerate(layout_blocks):
             total_blocks += 1
@@ -312,7 +324,8 @@ class LineBuilder(BaseBuilder):
                 covered_blocks += 1
 
             if (
-                layout_block.polygon.intersection_pct(document_page.polygon) > 0.8
+                layout_block.polygon.intersection_pct(
+                    document_page.polygon) > 0.8
                 and layout_block.block_type == BlockTypes.Text
             ):
                 large_text_blocks += 1
@@ -366,7 +379,8 @@ class LineBuilder(BaseBuilder):
             line_polygon_rescaled = deepcopy(line.line.polygon).rescale(
                 page_size, image_size
             )
-            line_bbox = line_polygon_rescaled.fit_to_bounds((0, 0, *image_size)).bbox
+            line_bbox = line_polygon_rescaled.fit_to_bounds(
+                (0, 0, *image_size)).bbox
 
             if not self.is_blank_slice(page_image.crop(line_bbox)):
                 good_lines.append(line)

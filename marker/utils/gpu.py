@@ -27,13 +27,18 @@ class GPUManager:
 
     @staticmethod
     def using_cuda():
-        return "cuda" in settings.TORCH_DEVICE_MODEL
+        return settings.TORCH_DEVICE_MODEL == "cuda"
+
+    @staticmethod
+    def using_mps():
+        return settings.TORCH_DEVICE_MODEL == "mps"
 
     def check_cuda_available(self) -> bool:
         if not torch.cuda.is_available():
             return False
         try:
-            subprocess.run(["nvidia-smi", "--version"], capture_output=True, check=True)
+            subprocess.run(["nvidia-smi", "--version"],
+                           capture_output=True, check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
@@ -87,7 +92,8 @@ class GPUManager:
                 stderr=subprocess.PIPE,
             )
 
-            logger.info(f"Started NVIDIA MPS server for chunk {self.device_idx}")
+            logger.info(
+                f"Started NVIDIA MPS server for chunk {self.device_idx}")
             return True
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.warning(
@@ -118,7 +124,8 @@ class GPUManager:
                     self.mps_server_process.kill()
                 self.mps_server_process = None
 
-            logger.info(f"Stopped NVIDIA MPS server for chunk {self.device_idx}")
+            logger.info(
+                f"Stopped NVIDIA MPS server for chunk {self.device_idx}")
         except Exception as e:
             logger.warning(
                 f"Failed to stop MPS server for chunk {self.device_idx}: {e}"

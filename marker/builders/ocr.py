@@ -53,8 +53,10 @@ class OcrBuilder(BaseBuilder):
         "The OCR mode to use, see surya for details.  Set to 'ocr_without_boxes' for potentially better performance, at the expense of formatting.",
     ] = TaskNames.ocr_with_boxes
     keep_chars: Annotated[bool, "Keep individual characters."] = False
-    disable_ocr_math: Annotated[bool, "Disable inline math recognition in OCR"] = False
-    drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
+    disable_ocr_math: Annotated[bool,
+                                "Disable inline math recognition in OCR"] = False
+    drop_repeated_text: Annotated[bool,
+                                  "Drop repeated text in OCR results."] = False
 
     def __init__(self, recognition_model: RecognitionPredictor, config=None):
         super().__init__(config)
@@ -83,7 +85,8 @@ class OcrBuilder(BaseBuilder):
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 64
         elif settings.TORCH_DEVICE_MODEL == "mps":
-            return 16
+            # MPS can usually handle more here (fp16); tune 24–32 if VRAM allows
+            return 24
         return 32
 
     def get_ocr_images_polygons_ids(
@@ -130,7 +133,8 @@ class OcrBuilder(BaseBuilder):
                     page_highres_polys.append(line_bbox_rescaled)
                     page_line_ids.append(line.id)
                     # For OCRed pages, this text will be blank
-                    page_line_original_texts.append(line.ocr_input_text(document))
+                    page_line_original_texts.append(
+                        line.ocr_input_text(document))
 
             highres_images.append(page_highres_image)
             highres_polys.append(page_highres_polys)
@@ -182,7 +186,8 @@ class OcrBuilder(BaseBuilder):
                 )
 
                 line = document_page.get_block(line_id)
-                self.replace_line_spans(document, document_page, line, new_spans)
+                self.replace_line_spans(
+                    document, document_page, line, new_spans)
 
     # TODO Fix polygons when we cut the span into multiple spans
     def link_and_break_span(self, span: Span, text: str, match_text, url: str):
@@ -208,7 +213,8 @@ class OcrBuilder(BaseBuilder):
         self, document: Document, page: PageGroup, line: Line, new_spans: List[Span]
     ):
         old_spans = line.contained_blocks(document, [BlockTypes.Span])
-        text_ref_matching = {span.text: span.url for span in old_spans if span.url}
+        text_ref_matching = {
+            span.text: span.url for span in old_spans if span.url}
 
         # Insert refs into new spans, since the OCR model does not (cannot) generate these
         final_new_spans = []
@@ -285,7 +291,8 @@ class OcrBuilder(BaseBuilder):
             if is_opening_tag and format not in formats:
                 formats.add(format)
                 if current_span:
-                    current_chars = self.assign_chars(current_span, current_chars)
+                    current_chars = self.assign_chars(
+                        current_span, current_chars)
                     spans.append(current_span)
                     current_span = None
 
@@ -317,7 +324,8 @@ class OcrBuilder(BaseBuilder):
                             f'<math display="inline">{current_span.text}</math>'
                         )
 
-                    current_chars = self.assign_chars(current_span, current_chars)
+                    current_chars = self.assign_chars(
+                        current_span, current_chars)
                     spans.append(current_span)
                     current_span = None
                 continue

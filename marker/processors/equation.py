@@ -36,7 +36,8 @@ class EquationProcessor(BaseProcessor):
         bool,
         "Whether to disable the tqdm progress bar.",
     ] = False
-    drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
+    drop_repeated_text: Annotated[bool,
+                                  "Drop repeated text in OCR results."] = False
 
     def __init__(self, recognition_model: RecognitionPredictor, config=None):
         super().__init__(config)
@@ -50,7 +51,7 @@ class EquationProcessor(BaseProcessor):
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 16
         elif settings.TORCH_DEVICE_MODEL == "mps":
-            return 6
+            return 8
         return 6
 
     def __call__(self, document: Document):

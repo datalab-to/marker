@@ -28,7 +28,8 @@ class TableProcessor(BaseProcessor):
     A processor for recognizing tables in the document.
     """
 
-    block_types = (BlockTypes.Table, BlockTypes.TableOfContents, BlockTypes.Form)
+    block_types = (BlockTypes.Table,
+                   BlockTypes.TableOfContents, BlockTypes.Form)
     detect_boxes: Annotated[
         bool,
         "Whether to detect boxes for the table recognition model.",
@@ -64,7 +65,8 @@ class TableProcessor(BaseProcessor):
         bool,
         "Whether to disable the tqdm progress bar.",
     ] = False
-    drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
+    drop_repeated_text: Annotated[bool,
+                                  "Drop repeated text in OCR results."] = False
 
     def __init__(
         self,
@@ -128,7 +130,8 @@ class TableProcessor(BaseProcessor):
         )
         self.assign_text_to_cells(tables, table_data)
         self.split_combined_rows(tables)  # Split up rows that were combined
-        self.combine_dollar_column(tables)  # Combine columns that are just dollar signs
+        # Combine columns that are just dollar signs
+        self.combine_dollar_column(tables)
 
         # Assign table cells to the table
         table_idx = 0
@@ -174,7 +177,8 @@ class TableProcessor(BaseProcessor):
                 )
                 for child, intersection in zip(child_contained_blocks, intersections):
                     # Adjust this to percentage of the child block that is enclosed by the table
-                    intersection_pct = intersection / max(child.polygon.area, 1)
+                    intersection_pct = intersection / \
+                        max(child.polygon.area, 1)
                     if intersection_pct > 0.95 and child.id in page.structure:
                         page.structure.remove(child.id)
 
@@ -186,7 +190,8 @@ class TableProcessor(BaseProcessor):
             if not text or text == ".":
                 continue
             text = re.sub(r"(\s\.){2,}", "", text)  # Replace . . .
-            text = re.sub(r"\.{2,}", "", text)  # Replace ..., like in table of contents
+            # Replace ..., like in table of contents
+            text = re.sub(r"\.{2,}", "", text)
             text = self.normalize_spaces(fix_text(text))
             fixed_text.append(text)
         return fixed_text
@@ -236,7 +241,8 @@ class TableProcessor(BaseProcessor):
                         col < max_col,
                     ]
                 ):
-                    next_col_cells = [c for c in table.cells if c.col_id == col + 1]
+                    next_col_cells = [
+                        c for c in table.cells if c.col_id == col + 1]
                     next_col_rows = [c.row_id for c in next_col_cells]
                     col_rows = [c.row_id for c in col_cells]
                     if (
@@ -293,7 +299,8 @@ class TableProcessor(BaseProcessor):
                 # Cells in this row
                 # Deepcopy is because we do an in-place mutation later, and that can cause rows to shift to match rows in unique_rows
                 # making them be processed twice
-                row_cells = deepcopy([c for c in table.cells if c.row_id == row])
+                row_cells = deepcopy(
+                    [c for c in table.cells if c.row_id == row])
                 rowspans = [c.rowspan for c in row_cells]
                 line_lens = [
                     len(c.text_lines) if isinstance(c.text_lines, list) else 1
@@ -312,14 +319,16 @@ class TableProcessor(BaseProcessor):
                         len(rowspan_cells) == 0,
                         all([rowspan == 1 for rowspan in rowspans]),
                         all([line_len > 1 for line_len in line_lens]),
-                        all([line_len == line_lens[0] for line_len in line_lens]),
+                        all([line_len == line_lens[0]
+                            for line_len in line_lens]),
                     ]
                 )
                 line_lens_counter = Counter(line_lens)
                 counter_keys = sorted(list(line_lens_counter.keys()))
                 should_split_partial_row = all(
                     [
-                        len(row_cells) > 3,  # Only split if there are more than 3 cells
+                        # Only split if there are more than 3 cells
+                        len(row_cells) > 3,
                         len(rowspan_cells) == 0,
                         all([r == 1 for r in rowspans]),
                         len(line_lens_counter) == 2
@@ -420,8 +429,10 @@ class TableProcessor(BaseProcessor):
             for k in cell_text:
                 # TODO: see if the text needs to be sorted (based on rotation)
                 text = cell_text[k]
-                assert all("text" in t for t in text), "All text lines must have text"
-                assert all("bbox" in t for t in text), "All text lines must have a bbox"
+                assert all(
+                    "text" in t for t in text), "All text lines must have text"
+                assert all(
+                    "bbox" in t for t in text), "All text lines must have a bbox"
                 table_cells[k].text_lines = text
 
     def assign_pdftext_lines(self, extract_blocks: list, filepath: str):
@@ -491,13 +502,16 @@ class TableProcessor(BaseProcessor):
             return self.detection_batch_size
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 10
+        elif settings.TORCH_DEVICE_MODEL == "mps":
+            # CPU fallback under MPS; modestly higher than plain CPU default
+            return 6
         return 4
 
     def get_table_rec_batch_size(self):
         if self.table_rec_batch_size is not None:
             return self.table_rec_batch_size
         elif settings.TORCH_DEVICE_MODEL == "mps":
-            return 6
+            return 8
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 14
         return 6
@@ -506,7 +520,7 @@ class TableProcessor(BaseProcessor):
         if self.recognition_batch_size is not None:
             return self.recognition_batch_size
         elif settings.TORCH_DEVICE_MODEL == "mps":
-            return 32
+            return 24
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 32
         return 32
