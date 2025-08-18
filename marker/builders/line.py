@@ -104,7 +104,6 @@ class LineBuilder(BaseBuilder):
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 10
         elif settings.TORCH_DEVICE_MODEL == "mps":
-
             # Detection runs on CPU when device is MPS; bump slightly to amortize overhead
             return 6
         return 4

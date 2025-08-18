@@ -7,6 +7,75 @@ from marker.settings import settings
 
 logger = get_logger()
 
+# -------- Safe NMS (works on MPS by falling back to CPU) --------
+# Import torchvision NMS if available; otherwise we’ll use a small CPU NMS.
+try:
+    from marker.gpu import nms as _torchvision_nms  # type: ignore
+except Exception:
+    _torchvision_nms = None
+
+
+def _nms_cpu(boxes: torch.Tensor, scores: torch.Tensor, iou_thresh: float) -> torch.Tensor:
+    """
+    Greedy NMS on CPU using pure PyTorch ops.
+    boxes: [N, 4] (x1, y1, x2, y2), scores: [N]
+    Returns indices of kept boxes (LongTensor).
+    """
+    if boxes.numel() == 0:
+        return boxes.new_zeros((0,), dtype=torch.long)
+
+    # Ensure CPU tensors
+    boxes = boxes.detach().to("cpu")
+    scores = scores.detach().to("cpu")
+
+    order = scores.argsort(descending=True)
+    boxes = boxes[order]
+    keep = []
+
+    while order.numel() > 0:
+        # Keep the highest score index (relative to original order)
+        i = int(order[0])
+        keep.append(i)
+        if order.numel() == 1:
+            break
+
+        # Compute IoU with the rest
+        rest = order[1:]
+        b0 = boxes[0].unsqueeze(0)
+        br = boxes[1:]
+
+        xx1 = torch.maximum(b0[:, 0], br[:, 0])
+        yy1 = torch.maximum(b0[:, 1], br[:, 1])
+        xx2 = torch.minimum(b0[:, 2], br[:, 2])
+        yy2 = torch.minimum(b0[:, 3], br[:, 3])
+
+        inter = (xx2 - xx1).clamp(min=0) * (yy2 - yy1).clamp(min=0)
+        area0 = (b0[:, 2] - b0[:, 0]) * (b0[:, 3] - b0[:, 1])
+        arear = (br[:, 2] - br[:, 0]) * (br[:, 3] - br[:, 1])
+        iou = inter / (area0 + arear - inter + 1e-6)
+
+        # Keep boxes with IoU below threshold
+        mask = iou <= iou_thresh
+        boxes = torch.cat([b0, br[mask]], dim=0)
+        order = order[1:][mask]
+
+    return torch.tensor(keep, dtype=torch.long)
+
+
+def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_thresh: float) -> torch.Tensor:
+    """
+    Safe NMS wrapper:
+      • If on MPS (Apple GPU) or torchvision NMS is unavailable → use CPU fallback.
+      • Else → call torchvision.ops.nms directly.
+    """
+    if _torchvision_nms is None or (isinstance(boxes, torch.Tensor) and boxes.device.type == "mps"):
+        return _nms_cpu(boxes, scores, iou_thresh)
+    return _torchvision_nms(boxes, scores, iou_thresh)
+
+
+__all__ = ["nms"]
+# ---------------------------------------------------------------
+
 
 class GPUManager:
     default_gpu_vram: int = 8

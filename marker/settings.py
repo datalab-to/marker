@@ -27,8 +27,13 @@ class Settings(BaseSettings):
 
     # General models
     TORCH_DEVICE: Optional[str] = (
-        None  # Note: MPS device does not work for text detection, and will default to CPU
+        None  # Pipeline defualt
     )
+    # Detector-specific override:
+    #   "auto" → use MPS if available, else pipeline device
+    #   "mps"  → force detector forward on MPS
+    #   "cpu"  → force detector full CPU
+    DETECTOR_DEVICE: str = "auto"
 
     @computed_field
     @property
@@ -46,14 +51,12 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def MODEL_DTYPE(self) -> torch.dtype:
-
-        # Prefer bfloat16 on CUDA, float16 on MPS, float32 on CPU
         if self.TORCH_DEVICE_MODEL == "cuda":
             return torch.bfloat16
         if self.TORCH_DEVICE_MODEL == "mps":
-            return torch.bfloat16
+            # Apple GPUs don’t support bfloat16
+            return torch.float16
         return torch.float32
-    # Convenience helper for cleaner branching elsewhere
 
     @property
     def USING_CUDA(self) -> bool:
@@ -66,6 +69,14 @@ class Settings(BaseSettings):
     class Config:
         env_file = find_dotenv("local.env")
         extra = "ignore"
+
+    @property
+    def USING_CUDA(self) -> bool:
+        return self.TORCH_DEVICE_MODEL == "cuda"
+
+    @property
+    def USING_MPS(self) -> bool:
+        return self.TORCH_DEVICE_MODEL == "mps"
 
 
 settings = Settings()
