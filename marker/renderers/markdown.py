@@ -102,9 +102,7 @@ class Markdownify(MarkdownConverter):
             return (
                 "\n"
                 + self.block_math_delimiters[0]
-                + "\n"
                 + text.strip()
-                + "\n"
                 + self.block_math_delimiters[1]
                 + "\n"
             )

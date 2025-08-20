@@ -10,6 +10,7 @@ from marker.builders.document import DocumentBuilder
 from marker.builders.layout import LayoutBuilder
 from marker.builders.line import LineBuilder
 from marker.builders.ocr import OcrBuilder
+from marker.builders.structure import StructureBuilder
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.providers.registry import provider_from_filepath
@@ -106,7 +107,9 @@ def pdf_document(
     line_builder = LineBuilder(detection_model, ocr_error_model, config)
     ocr_builder = OcrBuilder(recognition_model, config)
     builder = DocumentBuilder(config)
+    structure_builder = StructureBuilder(config)
     document = builder(doc_provider, layout_builder, line_builder, ocr_builder)
+    structure_builder(document)
     yield document
 
 

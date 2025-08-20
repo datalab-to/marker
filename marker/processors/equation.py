@@ -114,6 +114,7 @@ class EquationProcessor(BaseProcessor):
             fixed_math_html,
         )
         fixed_math_html = re.sub(r"\\n</math>$", "</math>", fixed_math_html)
+        fixed_math_html = re.sub(r"<br>", "", fixed_math_html)
         fixed_math_html = fix_text(
             fixed_math_html, config=TextFixerConfig(unescape_html=True)
         )
@@ -128,10 +129,12 @@ class EquationProcessor(BaseProcessor):
         predictions: List[OCRResult] = self.recognition_model(
             images=page_images,
             bboxes=bboxes,
-            task_names=["block_without_boxes"] * len(page_images),
+            task_names=["ocr_with_boxes"] * len(page_images),
             recognition_batch_size=self.get_batch_size(),
             sort_lines=False,
             drop_repeated_text=self.drop_repeated_text,
+            max_tokens=1024,
+            max_sliding_window=1200,
         )
 
         equation_predictions = [

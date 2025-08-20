@@ -129,6 +129,12 @@ def process_single_pdf(args):
     default=10,
     help="Maximum number of tasks per worker process before recycling.",
 )
+@click.option(
+    "--workers",
+    type=int,
+    default=None,
+    help="Number of worker processes to use.  Set automatically by default, but can be overridden.",
+)
 @ConfigParser.common_options
 def convert_cli(in_folder: str, **kwargs):
     total_pages = 0
@@ -163,8 +169,12 @@ def convert_cli(in_folder: str, **kwargs):
     with GPUManager(chunk_idx) as gpu_manager:
         batch_sizes, workers = get_batch_sizes_worker_counts(gpu_manager, 7)
 
+        # Override workers if specified
+        if kwargs["workers"] is not None:
+            workers = kwargs["workers"]
+
         # Set proper batch sizes and thread counts
-        total_processes = min(len(files_to_convert), workers)
+        total_processes = max(1, min(len(files_to_convert), workers))
         kwargs["total_torch_threads"] = max(
             2, psutil.cpu_count(logical=False) // total_processes
         )

@@ -6,7 +6,7 @@ from marker.renderers.markdown import MarkdownOutput
 
 
 @pytest.mark.output_format("markdown")
-@pytest.mark.config({"page_range": [0, 1, 2, 3, 7]})
+@pytest.mark.config({"page_range": [0, 1, 2, 3, 7], "disable_ocr": True})
 def test_pdf_converter(pdf_converter: PdfConverter, temp_doc):
     markdown_output: MarkdownOutput = pdf_converter(temp_doc.name)
     markdown = markdown_output.markdown
@@ -79,7 +79,7 @@ def test_pptx_converter(pdf_converter: PdfConverter, temp_doc):
 
 
 @pytest.mark.output_format("markdown")
-@pytest.mark.config({"page_range": [0, 1, 2, 3, 7]})
+@pytest.mark.config({"page_range": [0, 1, 2, 3, 7], "disable_ocr": True})
 def test_pdf_converter_bytes(pdf_converter: PdfConverter, temp_doc):
     with open(temp_doc.name, "rb") as f:
         data = f.read()

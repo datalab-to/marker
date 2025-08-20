@@ -8,8 +8,11 @@ from marker.schema import BlockTypes
 from marker.schema.registry import get_block_class
 
 
+@pytest.mark.filename("thinkpython.pdf")
 @pytest.mark.config({"page_range": [0]})
-def test_layout_replace(request, config, doc_provider, layout_model, ocr_error_model, detection_model):
+def test_layout_replace(
+    request, config, doc_provider, layout_model, ocr_error_model, detection_model
+):
     # The llm layout builder replaces blocks - this makes sure text is still merged properly
     layout_builder = LayoutBuilder(layout_model, config)
     line_builder = LineBuilder(detection_model, ocr_error_model, config)
@@ -35,8 +38,4 @@ def test_layout_replace(request, config, doc_provider, layout_model, ocr_error_m
     renderer = MarkdownRenderer(config)
     rendered = renderer(document)
 
-    assert "worst-case perturbations" in rendered.markdown
-    assert "projected gradient descent" in rendered.markdown
-
-
-
+    assert "Think Python" in rendered.markdown

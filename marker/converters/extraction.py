@@ -58,7 +58,7 @@ class ExtractionConverter(PdfConverter):
         output_pages = re.split(self.pattern, markdown)[1:]  # Split output into pages
 
         # This needs an LLM service for extraction, this sets it in the extractor
-        if not self.artifact_dict["llm_service"]:
+        if self.artifact_dict.get("llm_service") is None:
             self.artifact_dict["llm_service"] = self.resolve_dependencies(
                 self.default_llm_service
             )

@@ -17,6 +17,9 @@ class BlockMetadata(BaseModel):
     llm_request_count: int = 0
     llm_error_count: int = 0
     llm_tokens_used: int = 0
+    previous_text: str = ""
+    previous_type: str = ""
+    previous_order: int = 0
 
     def merge(self, model2):
         return self.__class__(
@@ -272,6 +275,9 @@ class Block(BaseModel):
         section_hierarchy: dict | None = None,
         block_config: Optional[dict] = None,
     ) -> BlockOutput:
+        if block_config is None:
+            block_config = {}
+
         child_content = []
         if section_hierarchy is None:
             section_hierarchy = {}
@@ -312,12 +318,17 @@ class Block(BaseModel):
             metadata_attr = getattr(self.metadata, key)
             if isinstance(metadata_attr, int) and isinstance(value, int):
                 setattr(self.metadata, key, metadata_attr + value)
+            elif isinstance(metadata_attr, str) and isinstance(value, str):
+                setattr(self.metadata, key, value)
             else:
                 raise ValueError(f"Metadata attribute {key} is not an integer")
 
     def handle_html_output(
         self, document, child_blocks, parent_structure, block_config=None
     ):
+        if block_config is None:
+            block_config = {}
+
         child_ref_blocks = [
             block
             for block in child_blocks

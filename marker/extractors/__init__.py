@@ -24,8 +24,8 @@ class BaseExtractor:
     ] = False
 
     def __init__(self, llm_service: BaseService, config=None):
-        self.llm_service = llm_service
         assign_config(self, config)
+        self.llm_service = llm_service
 
     def extract_image(
         self,

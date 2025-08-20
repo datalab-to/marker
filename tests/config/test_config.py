@@ -67,10 +67,9 @@ def test_config_llm():
 
 
 def test_config_force_ocr():
-    kwargs = capture_kwargs(["test", "--force_ocr", "--format_lines"])
+    kwargs = capture_kwargs(["test", "--force_ocr"])
     parser = ConfigParser(kwargs)
     config_dict = parser.generate_config_dict()
 
     # Validate kwarg capturing
     assert config_dict["force_ocr"]
-    assert config_dict["format_lines"]

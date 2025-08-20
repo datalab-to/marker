@@ -83,7 +83,7 @@ class OcrBuilder(BaseBuilder):
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 64
         elif settings.TORCH_DEVICE_MODEL == "mps":
-            return 32
+            return 16
         return 32
 
     def get_ocr_images_polygons_ids(
@@ -108,7 +108,7 @@ class OcrBuilder(BaseBuilder):
                 block_lines_to_ocr = [
                     block_line
                     for block_line in block_lines
-                    if block_line.text_extraction_method in ["surya", "hybrid"]
+                    if block_line.text_extraction_method == "surya"
                 ]
 
                 # Set extraction method of OCR-only pages

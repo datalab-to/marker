@@ -127,6 +127,9 @@ class PdfConverter(BaseConverter):
         else:
             renderer = MarkdownRenderer
 
+        # Put here so that resolve_dependencies can access it
+        self.artifact_dict = artifact_dict
+
         if llm_service:
             llm_service_cls = strings_to_classes([llm_service])[0]
             llm_service = self.resolve_dependencies(llm_service_cls)
@@ -134,10 +137,9 @@ class PdfConverter(BaseConverter):
             llm_service = self.resolve_dependencies(self.default_llm_service)
 
         # Inject llm service into artifact_dict so it can be picked up by processors, etc.
-        artifact_dict["llm_service"] = llm_service
+        self.artifact_dict["llm_service"] = llm_service
         self.llm_service = llm_service
 
-        self.artifact_dict = artifact_dict
         self.renderer = renderer
 
         processor_list = self.initialize_processors(processor_list)

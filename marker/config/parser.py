@@ -62,7 +62,6 @@ class ConfigParser:
             default=False,
             help="Disable image extraction.",
         )(fn)
-
         # these are options that need a list transformation, i.e splitting/parsing a string
         fn = click.option(
             "--page_range",

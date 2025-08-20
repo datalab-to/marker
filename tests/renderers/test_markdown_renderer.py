@@ -5,13 +5,22 @@ from marker.schema import BlockTypes
 from marker.schema.blocks import TableCell
 
 
-@pytest.mark.config({"page_range": [0]})
+@pytest.mark.config({"page_range": [0], "disable_ocr": True})
 def test_markdown_renderer(pdf_document):
     renderer = MarkdownRenderer()
     md = renderer(pdf_document).markdown
 
     # Verify markdown
-    assert '# Subspace Adversarial Training' in md
+    assert "# Subspace Adversarial Training" in md
+
+
+@pytest.mark.config({"page_range": [0]})
+def test_markdown_renderer_auto_ocr(pdf_document):
+    renderer = MarkdownRenderer()
+    md = renderer(pdf_document).markdown
+
+    # Verify markdown
+    assert "Subspace Adversarial Training" in md
 
 
 @pytest.mark.config({"page_range": [0, 1], "paginate_output": True})
@@ -29,12 +38,14 @@ def test_markdown_renderer_pagination_blank_last_page(pdf_document):
     last_page = pdf_document.pages[-1]
     last_page.children = []
     last_page.structure = []
-    
+
     renderer = MarkdownRenderer({"paginate_output": True})
     md = renderer(pdf_document).markdown
-    
+
     # Should end with pagination marker and preserve trailing newlines
-    assert md.endswith("}\n\n") or md.endswith("}------------------------------------------------\n\n")
+    assert md.endswith("}\n\n") or md.endswith(
+        "}------------------------------------------------\n\n"
+    )
 
 
 @pytest.mark.config({"page_range": [0, 1]})
@@ -48,9 +59,10 @@ def test_markdown_renderer_metadata(pdf_document):
 def test_markdown_renderer_images(pdf_document):
     renderer = MarkdownRenderer({"extract_images": False})
     markdown_output = renderer(pdf_document)
-    
+
     assert len(markdown_output.images) == 0
-    assert '![](' not in markdown_output.markdown
+    assert "![](" not in markdown_output.markdown
+
 
 @pytest.mark.config({"page_range": [5]})
 def test_markdown_renderer_tables(pdf_document):
@@ -74,5 +86,3 @@ def test_markdown_renderer_tables(pdf_document):
     renderer = MarkdownRenderer()
     md = renderer(pdf_document).markdown
     assert "54 <i>.45</i> 67<br>89 $x$" in md
-
-

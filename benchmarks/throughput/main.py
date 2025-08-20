@@ -25,7 +25,6 @@ def get_next_pdf(ds: datasets.Dataset, i: int):
 
 def single_batch(
     batch_size: int,
-    format_lines: bool,
     num_threads: int,
     force_ocr: bool,
     quantize: bool,
@@ -83,7 +82,6 @@ def single_batch(
                     artifact_dict=model_dict,
                     config={
                         "disable_tqdm": worker_id > 0,
-                        "format_lines": format_lines,
                         "page_range": page_range,
                         "force_ocr": force_ocr,
                     },
@@ -104,14 +102,12 @@ def single_batch(
 @click.command(help="Benchmark PDF to MD conversion throughput.")
 @click.option("--workers", default=1, help="Number of workers to use.")
 @click.option("--batch_size", default=1, help="Batch size for inference.")
-@click.option("--format_lines", is_flag=True, help="Format lines in the output.")
 @click.option("--force_ocr", is_flag=True, help="Force OCR on all pages.")
 @click.option("--quantize", is_flag=True, help="Use quantized model.")
 @click.option("--compile", is_flag=True, help="Use compiled model.")
 def main(
     workers: int,
     batch_size: int,
-    format_lines: bool,
     force_ocr: bool,
     quantize: bool,
     compile: bool,
@@ -127,7 +123,6 @@ def main(
             executor.submit(
                 single_batch,
                 batch_size,
-                format_lines,
                 cpus_per_worker,
                 force_ocr,
                 quantize,

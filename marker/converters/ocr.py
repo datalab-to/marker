@@ -19,7 +19,7 @@ class OCRConverter(PdfConverter):
         if not self.config:
             self.config = {}
 
-        self.config["format_lines"] = True
+        self.config["force_ocr"] = True
         self.renderer = OCRJSONRenderer
 
     def build_document(self, filepath: str):

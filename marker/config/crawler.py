@@ -60,7 +60,8 @@ class ConfigCrawler:
                         attr
                     ] = (attr_type, formatted_type, default, metadata)
 
-    def _gather_super_annotations(self, cls: Type) -> Dict[str, Type]:
+    @staticmethod
+    def _gather_super_annotations(cls: Type) -> Dict[str, Type]:
         """
         Collect all annotated attributes from `cls` and its superclasses, bottom-up.
         Subclass attributes overwrite superclass attributes with the same name.

@@ -89,7 +89,11 @@ class OCRJSONRenderer(BaseRenderer):
                     line_obj.html = line.html
                 else:
                     line_obj.html = line.formatted_text(document)
-                    spans = [document.get_block(span_id) for span_id in line.structure]
+                    spans = (
+                        [document.get_block(span_id) for span_id in line.structure]
+                        if line.structure
+                        else []
+                    )
                     children = []
                     for span in spans:
                         if not span.structure:

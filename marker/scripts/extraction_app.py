@@ -192,11 +192,6 @@ strip_existing_ocr = st.sidebar.checkbox(
     help="Strip existing OCR text from the PDF and re-OCR.",
     value=False,
 )
-format_lines = st.sidebar.checkbox(
-    "Format lines",
-    help="Format lines in the document with OCR model",
-    value=False,
-)
 
 # Check if schema is provided before running
 if run_marker:
@@ -217,7 +212,6 @@ if run_marker:
                 "force_ocr": force_ocr,
                 "use_llm": use_llm,
                 "strip_existing_ocr": strip_existing_ocr,
-                "format_lines": format_lines,
             }
         )
 
