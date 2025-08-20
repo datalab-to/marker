@@ -27,8 +27,13 @@ class Settings(BaseSettings):
 
     # General models
     TORCH_DEVICE: Optional[str] = (
-        None  # Note: MPS device does not work for text detection, and will default to CPU
+        None  # Pipeline defualt
     )
+    # Detector-specific override:
+    #   "auto" → use MPS if available, else pipeline device
+    #   "mps"  → force detector forward on MPS
+    #   "cpu"  → force detector full CPU
+    DETECTOR_DEVICE: str = "auto"
 
     @computed_field
     @property
@@ -39,22 +44,39 @@ class Settings(BaseSettings):
         if torch.cuda.is_available():
             return "cuda"
 
-        if torch.backends.mps.is_available():
-            return "mps"
-
-        return "cpu"
+        # guard for older torch builds without .mps
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "cpu"
 
     @computed_field
     @property
     def MODEL_DTYPE(self) -> torch.dtype:
         if self.TORCH_DEVICE_MODEL == "cuda":
             return torch.bfloat16
-        else:
-            return torch.float32
+        if self.TORCH_DEVICE_MODEL == "mps":
+            # Apple GPUs don’t support bfloat16
+            return torch.float16
+        return torch.float32
+
+    @property
+    def USING_CUDA(self) -> bool:
+        return self.TORCH_DEVICE_MODEL == "cuda"
+
+    @property
+    def USING_MPS(self) -> bool:
+        return self.TORCH_DEVICE_MODEL == "mps"
 
     class Config:
         env_file = find_dotenv("local.env")
         extra = "ignore"
+
+    @property
+    def USING_CUDA(self) -> bool:
+        return self.TORCH_DEVICE_MODEL == "cuda"
+
+    @property
+    def USING_MPS(self) -> bool:
+        return self.TORCH_DEVICE_MODEL == "mps"
 
 
 settings = Settings()
