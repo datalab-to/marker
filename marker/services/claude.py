@@ -7,7 +7,7 @@ from PIL import Image
 import anthropic
 from anthropic import RateLimitError, APITimeoutError
 from marker.logger import get_logger
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from marker.schema.blocks import Block
 from marker.services import BaseService
@@ -17,7 +17,7 @@ logger = get_logger()
 
 class ClaudeService(BaseService):
     claude_model_name: Annotated[
-        str, "The name of the Google model to use for the service."
+        str, "The name of the Claude model to use for the service."
     ] = "claude-3-7-sonnet-20250219"
     claude_api_key: Annotated[str, "The Claude API key to use for the service."] = None
     max_claude_tokens: Annotated[
@@ -47,16 +47,14 @@ class ClaudeService(BaseService):
         try:
             # Try to parse as JSON first
             out_schema = schema.model_validate_json(response_text)
-            out_json = out_schema.model_dump()
-            return out_json
-        except Exception:
-            try:
-                # Re-parse with fixed escapes
-                escaped_str = response_text.replace("\\", "\\\\")
-                out_schema = schema.model_validate_json(escaped_str)
-                return out_schema.model_dump()
-            except Exception:
-                return
+        except ValidationError:
+            # Re-parse with fixed escapes
+            escaped_str = response_text.replace("\\", "\\\\")
+            # If we fail again, let the ValidationError be handled by the caller
+            out_schema = schema.model_validate_json(escaped_str)
+
+        out_json = out_schema.model_dump()
+        return out_json
 
     def get_client(self):
         return anthropic.Anthropic(
@@ -125,6 +123,20 @@ Respond only with the JSON schema, nothing else.  Do not include ```json, ```,  
                     wait_time = tries * self.retry_wait_time
                     logger.warning(
                         f"Rate limit error: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
+                    )
+                    time.sleep(wait_time)
+            except ValidationError as e:
+                # The response was not valid JSON
+                if tries == total_tries:
+                    # Last attempt failed. Give up
+                    logger.error(
+                        f"ValidationError: {e}. Max retries reached. Giving up. (Attempt {tries}/{total_tries})",
+                    )
+                    break
+                else:
+                    wait_time = tries * self.retry_wait_time
+                    logger.warning(
+                        f"ValidationError: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
                     )
                     time.sleep(wait_time)
             except Exception as e:
