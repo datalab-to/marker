@@ -134,11 +134,9 @@ Respond only with the JSON schema, nothing else.  Do not include ```json, ```,  
                     )
                     break
                 else:
-                    wait_time = tries * self.retry_wait_time
                     logger.warning(
-                        f"ValidationError: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
+                        f"ValidationError: {e}. (Attempt {tries}/{total_tries})",
                     )
-                    time.sleep(wait_time)
             except Exception as e:
                 logger.error(f"Error during Claude API call: {e}")
                 break

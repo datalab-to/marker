@@ -128,11 +128,9 @@ class OpenAIService(BaseService):
                     )
                     break
                 else:
-                    wait_time = tries * self.retry_wait_time
                     logger.warning(
-                        f"JSONDecodeError: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
+                        f"JSONDecodeError: {e}. (Attempt {tries}/{total_tries})",
                     )
-                    time.sleep(wait_time)
             except Exception as e:
                 logger.error(f"OpenAI inference failed: {e}")
                 break
