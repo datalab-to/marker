@@ -191,6 +191,14 @@ class PdfConverter(BaseConverter):
             second_layout_builder=self.molecule_layout_builder
         )
         
+        # 在文档构建完成后清理分子检测相关的内存
+        if self.use_molecule_detection and self.molecule_layout_builder:
+            try:
+                self.molecule_layout_builder.cleanup_memory()
+                print("✅ Cleaned up molecule detection memory after document building")
+            except Exception as e:
+                print(f"⚠️ Warning during molecule layout builder cleanup: {e}")
+        
         flush_cuda_memory()
         time_str = datetime.now(beijing_tz).strftime("%H:%M:%S")
         send_callback(self.callback_url, {

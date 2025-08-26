@@ -28,7 +28,12 @@ class MoleculeLayoutBuilder(BaseBuilder):
     """
     A builder for performing chemical molecule layout detection on PDF pages and merging the results into the document.
     Uses img2mol's Parser_Processer for molecule and table detection, or mock data for testing.
+    采用单例模式来避免重复创建Parser_Processer实例，减少内存泄漏。
     """
+    # 单例相关的类变量
+    _instance = None
+    _processor_cache = {}  # 用于缓存不同配置的processor实例
+    
     # The overlap threshold for replacing existing blocks with molecule blocks
     overlap_threshold: float = 0.9
     
@@ -41,6 +46,60 @@ class MoleculeLayoutBuilder(BaseBuilder):
     # Whether to use mock data instead of real img2mol detection
     use_mock_data: bool = False
     
+    def __new__(cls, processor_config=None, config=None):
+        """实现单例模式，确保相同配置只有一个实例"""
+        # 创建配置的哈希键
+        config_key = cls._create_config_key(processor_config, config)
+        
+        if config_key not in cls._processor_cache:
+            instance = super(MoleculeLayoutBuilder, cls).__new__(cls)
+            cls._processor_cache[config_key] = instance
+            print(f"🆕 Created new MoleculeLayoutBuilder instance for config: {config_key}")
+        else:
+            print(f"♻️  Reusing existing MoleculeLayoutBuilder instance for config: {config_key}")
+        
+        return cls._processor_cache[config_key]
+    
+    @classmethod
+    def _create_config_key(cls, processor_config, config):
+        """创建配置的唯一键"""
+        # 提取关键配置参数创建哈希
+        import hashlib
+        import json
+        
+        key_params = {}
+        
+        if processor_config:
+            # 只选择影响模型加载的关键参数
+            key_params.update({
+                'device': processor_config.get('device', 'cuda'),
+                'with_mol_detect': processor_config.get('with_mol_detect', True),
+                'with_table_detect': processor_config.get('with_table_detect', True),
+                'use_yolo_mol_model': processor_config.get('use_yolo_mol_model', True),
+                'use_yolo_table_model': processor_config.get('use_yolo_table_model', True),
+                'use_got_ocr_model': processor_config.get('use_got_ocr_model', True),
+                'model_dir': processor_config.get('model_dir', 'default')
+            })
+        
+        if config:
+            key_params.update({
+                'use_molecule_detection': config.get('use_molecule_detection', False)
+            })
+        
+        # 创建哈希
+        config_str = json.dumps(key_params, sort_keys=True)
+        return hashlib.md5(config_str.encode()).hexdigest()[:8]
+    
+    @classmethod
+    def clear_cache(cls):
+        """清理所有缓存的实例"""
+        print("🧹 Clearing MoleculeLayoutBuilder cache...")
+        for config_key, instance in cls._processor_cache.items():
+            if hasattr(instance, 'cleanup_memory'):
+                instance.cleanup_memory()
+        cls._processor_cache.clear()
+        print("✅ MoleculeLayoutBuilder cache cleared")
+    
     def __init__(self, processor_config=None, config=None):
         """
         初始化分子识别Layout Builder
@@ -49,10 +108,16 @@ class MoleculeLayoutBuilder(BaseBuilder):
             processor_config: img2mol Parser_Processer的配置参数
             config: marker配置
         """
+        # 防止重复初始化
+        if hasattr(self, '_initialized'):
+            print("♻️  MoleculeLayoutBuilder already initialized, skipping...")
+            return
+        
         super().__init__(config)
         
         self.processor_config = processor_config or {}
         self.processor = None
+        self._initialized = True
         
         # 检查是否使用mock模式
         self.use_mock_data = (
@@ -86,6 +151,36 @@ class MoleculeLayoutBuilder(BaseBuilder):
             print("🎭 切换到Mock模式")
             self.use_mock_data = True
             self.processor = None
+    
+    def cleanup_memory(self):
+        """清理内存"""
+        try:
+            if self.processor and hasattr(self.processor, 'cleanup_memory'):
+                self.processor.cleanup_memory()
+            
+            self.processor = None
+            
+            # 从全局模型管理器导入并清理
+            try:
+                import sys
+                sys.path.append('/app/img2mol')
+                sys.path.append('/app/img2mol/clean_img2smiles/src')
+                from img2smiles.pipeline.model_manager import model_manager
+                model_manager.print_memory_stats()
+            except:
+                pass
+            
+            print("✅ MoleculeLayoutBuilder memory cleaned up")
+            
+        except Exception as e:
+            print(f"⚠️ Warning during MoleculeLayoutBuilder cleanup: {e}")
+    
+    def __del__(self):
+        """析构函数"""
+        try:
+            self.cleanup_memory()
+        except:
+            pass
 
     def __call__(self, document: Document, provider: PdfProvider):
         """Process all pages in the document to detect molecules and tables"""

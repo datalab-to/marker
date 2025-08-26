@@ -114,8 +114,9 @@ class PdfProvider(BaseProvider):
 
             # Must be called on the parent pdf, before retrieving pages to render correctly
             if self.flatten_pdf:
+                print(f"[PdfProvider] flatten_pdf is True, init_forms", flush=True)
                 doc.init_forms()
-
+            print('@@@@doc', doc, dir(doc), flush=True)
             yield doc
         finally:
             if doc:
@@ -401,6 +402,7 @@ class PdfProvider(BaseProvider):
             page = pdf[idx]
         image = page.render(scale=dpi / 72, draw_annots=False).to_pil()
         image = image.convert("RGB")
+        print('@@@@@@@@@@image', image, image.size, flush=True)
         return image
 
     def get_images(self, idxs: List[int], dpi: int) -> List[Image.Image]:
