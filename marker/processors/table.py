@@ -115,6 +115,8 @@ class TableProcessor(BaseProcessor):
 
         ocr_blocks = [t for t in table_data if t["ocr_block"]]
         self.assign_ocr_lines(ocr_blocks)  # Handle tables where OCR is needed
+
+        # Ensure table_text_lines key exists for all tables
         for table_item in table_data:
             if "table_text_lines" not in table_item:
                 logger.warning(
@@ -122,19 +124,38 @@ class TableProcessor(BaseProcessor):
                 )
                 table_item["table_text_lines"] = []
 
-        self.table_rec_model.disable_tqdm = self.disable_tqdm
-        tables: List[TableResult] = self.table_rec_model(
-            [t["table_image"] for t in table_data],
-            batch_size=self.get_table_rec_batch_size(),
-        )
-        self.assign_text_to_cells(tables, table_data)
-        self.split_combined_rows(tables)  # Split up rows that were combined
-        self.combine_dollar_column(tables)  # Combine columns that are just dollar signs
+        # Filter out tables with no text lines to avoid empty tensor operations downstream
+        valid_table_data = [t for t in table_data if t["table_text_lines"]]
+        if not valid_table_data:
+            logger.info("No tables with text lines found - skipping table processing")
+            return
 
-        # Assign table cells to the table
+        self.table_rec_model.disable_tqdm = self.disable_tqdm
+        try:
+            tables: List[TableResult] = self.table_rec_model(
+                [t["table_image"] for t in valid_table_data],
+                batch_size=self.get_table_rec_batch_size(),
+            )
+            # Guard: if recognizer returns empty, skip gracefully
+            if not tables:
+                logger.info("Table recognizer returned no tables; skipping table post-processing")
+                return
+            self.assign_text_to_cells(tables, valid_table_data)
+            self.split_combined_rows(tables)  # Split up rows that were combined
+            self.combine_dollar_column(tables)  # Combine columns that are just dollar signs
+        except Exception as exc:
+            logger.error(f"Table recognition failed; skipping tables. Error: {exc}")
+            return
+
+        # Assign table cells to the table (only for tables we processed)
         table_idx = 0
+        valid_block_ids = [t["block_id"] for t in valid_table_data]
         for page in document.pages:
             for block in page.contained_blocks(document, self.block_types):
+                if block.id not in valid_block_ids:
+                    continue
+                if table_idx >= len(tables):
+                    break
                 block.structure = []  # Remove any existing lines, spans, etc.
                 cells: List[SuryaTableCell] = tables[table_idx].cells
                 for cell in cells:
@@ -402,8 +423,23 @@ class TableProcessor(BaseProcessor):
         for table_result, table_page_data in zip(tables, table_data):
             table_text_lines = table_page_data["table_text_lines"]
             table_cells: List[SuryaTableCell] = table_result.cells
+
+            # Guards: skip if no text lines or no cells
+            if not table_text_lines or not table_cells:
+                logger.warning(
+                    f"Skipping table {table_page_data.get('block_id', 'unknown')} due to missing text lines or cells"
+                )
+                continue
+
             text_line_bboxes = [t["bbox"] for t in table_text_lines]
             table_cell_bboxes = [c.bbox for c in table_cells]
+
+            # Guards: skip if bbox lists are empty
+            if not text_line_bboxes or not table_cell_bboxes:
+                logger.warning(
+                    f"Skipping table {table_page_data.get('block_id', 'unknown')} due to empty bbox lists"
+                )
+                continue
 
             intersection_matrix = matrix_intersection_area(
                 text_line_bboxes, table_cell_bboxes
