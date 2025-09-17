@@ -75,9 +75,14 @@ class PowerPointProvider(PdfProvider):
             # Process shapes in the slide
             for shape in slide.shapes:
                 # If shape is a group shape, we recursively handle all grouped shapes
-                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                    html_parts.append(self._handle_group(shape))
-                    continue
+                try:
+                    shape_type = shape.shape_type
+                except Exception as e:
+                    print(traceback.format_exc())
+                else:
+                    if shape_type == MSO_SHAPE_TYPE.GROUP:
+                        html_parts.append(self._handle_group(shape))
+                        continue
 
                 # If shape is a table
                 if shape.has_table:
@@ -85,9 +90,14 @@ class PowerPointProvider(PdfProvider):
                     continue
 
                 # If shape is a picture
-                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                    html_parts.append(self._handle_image(shape))
-                    continue
+                try:
+                    shape_type = shape.shape_type
+                except Exception as e:
+                    print(traceback.format_exc())
+                else:
+                    if shape_type == MSO_SHAPE_TYPE.PICTURE:
+                        html_parts.append(self._handle_image(shape))
+                        continue
 
                 # If shape has text
                 if hasattr(shape, "text") and shape.text is not None:
@@ -115,17 +125,27 @@ class PowerPointProvider(PdfProvider):
 
         group_parts = []
         for shape in group_shape.shapes:
-            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                group_parts.append(self._handle_group(shape))
-                continue
+            try:
+                shape_type = shape.shape_type
+            except Exception as e:
+                print(traceback.format_exc())
+            else:    
+                if shape_type == MSO_SHAPE_TYPE.GROUP:
+                    group_parts.append(self._handle_group(shape))
+                    continue
 
             if shape.has_table:
                 group_parts.append(self._handle_table(shape))
                 continue
-
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                group_parts.append(self._handle_image(shape))
-                continue
+            
+            try:
+                shape_type = shape.shape_type
+            except Exception as e:
+                print(traceback.format_exc())
+            else:
+                if shape_type == MSO_SHAPE_TYPE.PICTURE:
+                    group_parts.append(self._handle_image(shape))
+                    continue
 
             if hasattr(shape, "text"):
                 if shape.has_text_frame:
