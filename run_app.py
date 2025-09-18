@@ -133,6 +133,10 @@ def regular_document_proc(
                         file_type=file_type,
                         mol_detect=False
                     )
+                except Exception as e:
+                    print(traceback.format_exc())
+                    print('parse pptx to pdf failed, parse pptx directly...')
+                    extraction_outputs = extraction_proc.parse_pptx(file)
                 finally:
                     # 确保临时文件被清理
                     if os.path.exists(temp_file_path):
