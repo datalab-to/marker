@@ -135,7 +135,7 @@ def regular_document_proc(
                     )
                 except Exception as e:
                     print(traceback.format_exc())
-                    print('parse pptx to pdf failed, parse pptx directly...')
+                    print('regular document process, parse pptx to pdf failed, parse pptx directly...')
                     extraction_outputs = extraction_proc.parse_pptx(file)
                 finally:
                     # 确保临时文件被清理
@@ -281,6 +281,10 @@ def molecule_document_proc(
                         file_type=file_type,
                         mol_detect=True
                     )
+                except Exception as e:
+                    print(traceback.format_exc())
+                    print('molecule_document proess parse pptx to pdf failed, parse pptx directly...')
+                    extraction_outputs = extraction_proc.parse_pptx(file)
                 finally:
                     # 确保临时文件被清理
                     if os.path.exists(temp_file_path):
