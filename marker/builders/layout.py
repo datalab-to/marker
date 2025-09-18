@@ -11,6 +11,7 @@ from marker.schema.groups.page import PageGroup
 from marker.schema.polygon import PolygonBox
 from marker.schema.registry import get_block_class
 from marker.settings import settings
+from marker.utils.model_call import call_model_sync
 
 
 class LayoutBuilder(BaseBuilder):
@@ -43,9 +44,10 @@ class LayoutBuilder(BaseBuilder):
         float, "The maximum fraction to expand the layout box bounds by"
     ] = 0.05
 
-    def __init__(self, layout_model: LayoutPredictor, config=None):
+    def __init__(self, layout_model: LayoutPredictor = None, artifact_dict: dict = None, config=None):
         self.layout_model = layout_model
-
+        self.artifact_dict = artifact_dict or {}
+        
         super().__init__(config)
 
     def __call__(self, document: Document, provider: PdfProvider):
@@ -85,10 +87,23 @@ class LayoutBuilder(BaseBuilder):
 
     def surya_layout(self, pages: List[PageGroup]) -> List[LayoutResult]:
         self.layout_model.disable_tqdm = self.disable_tqdm
-        layout_results = self.layout_model(
-            [p.get_image(highres=False) for p in pages],
-            batch_size=int(self.get_batch_size()),
-        )
+        # Use the layout_model directly if it's available, otherwise use the model from artifact_dict
+        if self.layout_model is not None:
+            layout_results = call_model_sync(
+                "layout_model",
+                {"layout_model": self.layout_model},
+                [p.get_image(highres=False) for p in pages],
+                batch_size=int(self.get_batch_size()),
+            )
+        elif "layout_model" in self.artifact_dict:
+            layout_results = call_model_sync(
+                "layout_model",
+                self.artifact_dict,
+                [p.get_image(highres=False) for p in pages],
+                batch_size=int(self.get_batch_size()),
+            )
+        else:
+            raise ValueError("No layout_model available for processing")
         return layout_results
 
     def expand_layout_blocks(self, document: Document):

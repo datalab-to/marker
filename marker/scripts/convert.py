@@ -6,6 +6,7 @@ import psutil
 import torch
 
 from marker.utils.batch import get_batch_sizes_worker_counts
+from marker.utils.device_mode import detect_device_mode, is_nvidia_path, is_intel_path
 
 # Ensure threads don't contend
 os.environ["MKL_DYNAMIC"] = "FALSE"
@@ -39,8 +40,9 @@ configure_logging()
 logger = get_logger()
 
 
-def worker_init():
-    model_dict = create_model_dict()
+def worker_init(config_dict):
+    # Create models
+    model_dict = create_model_dict(config=config_dict)
 
     global model_refs
     model_refs = model_dict
@@ -60,8 +62,9 @@ def worker_exit():
 def process_single_pdf(args):
     page_count = 0
     fpath, cli_options = args
-    torch.set_num_threads(cli_options["total_torch_threads"])
-    del cli_options["total_torch_threads"]
+    if "total_torch_threads" in cli_options:
+        torch.set_num_threads(cli_options["total_torch_threads"])
+        del cli_options["total_torch_threads"]
 
     config_parser = ConfigParser(cli_options)
 
@@ -165,36 +168,88 @@ def convert_cli(in_folder: str, **kwargs):
 
     chunk_idx = kwargs["chunk_idx"]
 
-    # Use GPU context manager for automatic setup/cleanup
-    with GPUManager(chunk_idx) as gpu_manager:
-        batch_sizes, workers = get_batch_sizes_worker_counts(gpu_manager, 7)
+    # Detect device mode
+    device_mode = detect_device_mode()
+    logger.info(f"Detected device mode: {device_mode}")
+    
+    # Initialize variables
+    total_processes = 1
+    batch_sizes = {}
+    
+    # For Intel XPU path, use continuous batching with single model
+    if is_intel_path(device_mode):
+        logger.info("Using Intel XPU path with continuous batching")
+        # Use single process for continuous batching
+        total_processes = 1
+        batch_sizes = {
+            "layout_batch_size": 6,
+            "detection_batch_size": 4,
+            "table_rec_batch_size": 6,
+            "ocr_error_batch_size": 6,
+            "recognition_batch_size": 32,
+            "equation_batch_size": 8,
+            "detector_postprocessing_cpu_workers": 1,
+        }
+    else:
+        # Use GPU context manager for automatic setup/cleanup (NVIDIA path)
+        with GPUManager(chunk_idx) as gpu_manager:
+            batch_sizes, workers = get_batch_sizes_worker_counts(gpu_manager, 7)
 
-        # Override workers if specified
-        if kwargs["workers"] is not None:
-            workers = kwargs["workers"]
+            # Override workers if specified
+            if kwargs["workers"] is not None:
+                workers = kwargs["workers"]
 
-        # Set proper batch sizes and thread counts
-        total_processes = max(1, min(len(files_to_convert), workers))
-        kwargs["total_torch_threads"] = max(
-            2, psutil.cpu_count(logical=False) // total_processes
-        )
-        kwargs.update(batch_sizes)
+            # Set proper batch sizes and thread counts
+            total_processes = max(1, min(len(files_to_convert), workers))
+            cpu_count = psutil.cpu_count(logical=False)
+            if cpu_count is not None:
+                kwargs["total_torch_threads"] = max(2, cpu_count // total_processes)
+            else:
+                kwargs["total_torch_threads"] = 2
+            kwargs.update(batch_sizes)
+ 
+    logger.info(
+        f"Converting {len(files_to_convert)} pdfs in chunk {kwargs['chunk_idx'] + 1}/{kwargs['num_chunks']} with {total_processes} processes and saving to {kwargs['output_dir']}"
+    )
+    task_args = [(f, kwargs) for f in files_to_convert]
 
-        logger.info(
-            f"Converting {len(files_to_convert)} pdfs in chunk {kwargs['chunk_idx'] + 1}/{kwargs['num_chunks']} with {total_processes} processes and saving to {kwargs['output_dir']}"
-        )
-        task_args = [(f, kwargs) for f in files_to_convert]
-
-        start_time = time.time()
+    start_time = time.time()
+    # Generate config dict for workers
+    worker_config_dict = ConfigParser(kwargs).generate_config_dict()
+    
+    # For Intel XPU path, we don't use the GPUManager context or multiprocessing pool
+    if is_intel_path(device_mode):
+        # Process files sequentially for Intel XPU path
+        # Initialize models for sequential processing
+        model_dict = create_model_dict(config=worker_config_dict)
+        global model_refs
+        model_refs = model_dict
+        atexit.register(worker_exit)
+        
+        pbar = tqdm(total=len(task_args), desc="Processing PDFs", unit="pdf")
+        for args in task_args:
+            page_count = process_single_pdf(args)
+            if page_count is not None:
+                total_pages += page_count
+            else:
+                total_pages += 0
+            pbar.update(1)
+        pbar.close()
+    else:
+        # Use multiprocessing pool for NVIDIA path
         with mp.Pool(
             processes=total_processes,
             initializer=worker_init,
+            initargs=(worker_config_dict,),
             maxtasksperchild=kwargs["max_tasks_per_worker"],
         ) as pool:
             pbar = tqdm(total=len(task_args), desc="Processing PDFs", unit="pdf")
             for page_count in pool.imap_unordered(process_single_pdf, task_args):
+                if page_count is not None:
+                    total_pages += page_count
+                else:
+                    total_pages += 0
                 pbar.update(1)
-                total_pages += page_count
             pbar.close()
 
         total_time = time.time() - start_time

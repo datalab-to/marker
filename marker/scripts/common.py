@@ -44,7 +44,7 @@ def parse_args():
 
 @st.cache_resource()
 def load_models():
-    return create_model_dict()
+    return create_model_dict(config={})
 
 
 def open_pdf(pdf_file):

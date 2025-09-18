@@ -20,6 +20,7 @@ from marker.schema.text.span import Span
 from marker.settings import settings
 from marker.schema.polygon import PolygonBox
 from marker.util import get_opening_tag_type, get_closing_tag_type
+from marker.utils.model_call import call_model_sync
 
 
 class OcrBuilder(BaseBuilder):
@@ -72,10 +73,11 @@ class OcrBuilder(BaseBuilder):
     block_mode_max_lines: Annotated[int, "Max lines within a block before falling back to line mode"] = 15
     block_mode_max_height_frac: Annotated[float, "Max height of a block as a percentage of the page before falling back to line mode"] = 0.5
 
-    def __init__(self, recognition_model: RecognitionPredictor, config=None):
+    def __init__(self, recognition_model: RecognitionPredictor = None, artifact_dict: dict = None, config=None):
         super().__init__(config)
-
+        
         self.recognition_model = recognition_model
+        self.artifact_dict = artifact_dict or {}
 
     def __call__(self, document: Document, provider: PdfProvider):
         pages_to_ocr = [page for page in document.pages if page.text_extraction_method == 'surya']
@@ -173,18 +175,39 @@ class OcrBuilder(BaseBuilder):
             return
 
         self.recognition_model.disable_tqdm = self.disable_tqdm
-        recognition_results: List[OCRResult] = self.recognition_model(
-            images=images,
-            task_names=[self.ocr_task_name] * len(images),
-            polygons=block_polygons,
-            input_text=block_original_texts,
-            recognition_batch_size=int(self.get_recognition_batch_size()),
-            sort_lines=False,
-            math_mode=not self.disable_ocr_math,
-            drop_repeated_text=self.drop_repeated_text,
-            max_sliding_window=2148,
-            max_tokens=2048
-        )
+        # Use the recognition_model directly if it's available, otherwise use the model from artifact_dict
+        if self.recognition_model is not None:
+            recognition_results: List[OCRResult] = call_model_sync(
+                "recognition_model",
+                {"recognition_model": self.recognition_model},
+                images=images,
+                task_names=[self.ocr_task_name] * len(images),
+                polygons=block_polygons,
+                input_text=block_original_texts,
+                recognition_batch_size=int(self.get_recognition_batch_size()),
+                sort_lines=False,
+                math_mode=not self.disable_ocr_math,
+                drop_repeated_text=self.drop_repeated_text,
+                max_sliding_window=2148,
+                max_tokens=2048
+            )
+        elif "recognition_model" in self.artifact_dict:
+            recognition_results: List[OCRResult] = call_model_sync(
+                "recognition_model",
+                self.artifact_dict,
+                images=images,
+                task_names=[self.ocr_task_name] * len(images),
+                polygons=block_polygons,
+                input_text=block_original_texts,
+                recognition_batch_size=int(self.get_recognition_batch_size()),
+                sort_lines=False,
+                math_mode=not self.disable_ocr_math,
+                drop_repeated_text=self.drop_repeated_text,
+                max_sliding_window=2148,
+                max_tokens=2048
+            )
+        else:
+            raise ValueError("No recognition_model available for processing")
 
         assert len(recognition_results) == len(images) == len(pages) == len(block_ids), (
             f"Mismatch in OCR lengths: {len(recognition_results)}, {len(images)}, {len(pages)}, {len(block_ids)}"

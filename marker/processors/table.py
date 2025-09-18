@@ -21,6 +21,7 @@ from marker.settings import settings
 from marker.util import matrix_intersection_area, unwrap_math
 from marker.utils.image import is_blank_image
 from marker.logger import get_logger
+from marker.utils.model_call import call_model_sync
 
 logger = get_logger()
 
@@ -71,16 +72,18 @@ class TableProcessor(BaseProcessor):
 
     def __init__(
         self,
-        recognition_model: RecognitionPredictor,
-        table_rec_model: TableRecPredictor,
-        detection_model: DetectionPredictor,
+        recognition_model: RecognitionPredictor = None,
+        table_rec_model: TableRecPredictor = None,
+        detection_model: DetectionPredictor = None,
+        artifact_dict: dict = None,
         config=None,
     ):
         super().__init__(config)
-
+        
         self.recognition_model = recognition_model
         self.table_rec_model = table_rec_model
         self.detection_model = detection_model
+        self.artifact_dict = artifact_dict or {}
 
     def __call__(self, document: Document):
         filepath = document.filepath  # Path to original pdf file
@@ -114,10 +117,23 @@ class TableProcessor(BaseProcessor):
 
         # Detect tables and cells
         self.table_rec_model.disable_tqdm = self.disable_tqdm
-        tables: List[TableResult] = self.table_rec_model(
-            [t["table_image"] for t in table_data],
-            batch_size=self.get_table_rec_batch_size(),
-        )
+        # Use the table_rec_model directly if it's available, otherwise use the model from artifact_dict
+        if self.table_rec_model is not None:
+            tables: List[TableResult] = call_model_sync(
+                "table_rec_model",
+                {"table_rec_model": self.table_rec_model},
+                [t["table_image"] for t in table_data],
+                batch_size=self.get_table_rec_batch_size(),
+            )
+        elif "table_rec_model" in self.artifact_dict:
+            tables: List[TableResult] = call_model_sync(
+                "table_rec_model",
+                self.artifact_dict,
+                [t["table_image"] for t in table_data],
+                batch_size=self.get_table_rec_batch_size(),
+            )
+        else:
+            raise ValueError("No table_rec_model available for processing")
         assert len(tables) == len(table_data), (
             "Number of table results should match the number of tables"
         )
@@ -583,10 +599,23 @@ class TableProcessor(BaseProcessor):
                 ocr_tables.append(table_result)
                 ocr_idxs.append(j)
 
-        detection_results: List[TextDetectionResult] = self.detection_model(
-            images=[table_blocks[i]["table_image"] for i in ocr_idxs],
-            batch_size=self.get_detection_batch_size(),
-        )
+        # Use the detection_model directly if it's available, otherwise use the model from artifact_dict
+        if self.detection_model is not None:
+            detection_results: List[TextDetectionResult] = call_model_sync(
+                "detection_model",
+                {"detection_model": self.detection_model},
+                images=[table_blocks[i]["table_image"] for i in ocr_idxs],
+                batch_size=self.get_detection_batch_size(),
+            )
+        elif "detection_model" in self.artifact_dict:
+            detection_results: List[TextDetectionResult] = call_model_sync(
+                "detection_model",
+                self.artifact_dict,
+                images=[table_blocks[i]["table_image"] for i in ocr_idxs],
+                batch_size=self.get_detection_batch_size(),
+            )
+        else:
+            raise ValueError("No detection_model available for processing")
         assert len(detection_results) == len(ocr_idxs), (
             "Every OCRed table requires a text detection result"
         )
@@ -633,17 +662,37 @@ class TableProcessor(BaseProcessor):
                 filtered_table_polys.append(polygon)
             filtered_polys.append(filtered_table_polys)
 
-        ocr_results = self.recognition_model(
-            images=table_images,
-            task_names=["ocr_with_boxes"] * len(table_images),
-            recognition_batch_size=self.get_recognition_batch_size(),
-            drop_repeated_text=self.drop_repeated_table_text,
-            polygons=filtered_polys,
-            filter_tag_list=self.filter_tag_list,
-            max_tokens=2048,
-            max_sliding_window=2148,
-            math_mode=not self.disable_ocr_math,
-        )
+        # Use the recognition_model directly if it's available, otherwise use the model from artifact_dict
+        if self.recognition_model is not None:
+            ocr_results = call_model_sync(
+                "recognition_model",
+                {"recognition_model": self.recognition_model},
+                images=table_images,
+                task_names=["ocr_with_boxes"] * len(table_images),
+                recognition_batch_size=self.get_recognition_batch_size(),
+                drop_repeated_text=self.drop_repeated_table_text,
+                polygons=filtered_polys,
+                filter_tag_list=self.filter_tag_list,
+                max_tokens=2048,
+                max_sliding_window=2148,
+                math_mode=not self.disable_ocr_math,
+            )
+        elif "recognition_model" in self.artifact_dict:
+            ocr_results = call_model_sync(
+                "recognition_model",
+                self.artifact_dict,
+                images=table_images,
+                task_names=["ocr_with_boxes"] * len(table_images),
+                recognition_batch_size=self.get_recognition_batch_size(),
+                drop_repeated_text=self.drop_repeated_table_text,
+                polygons=filtered_polys,
+                filter_tag_list=self.filter_tag_list,
+                max_tokens=2048,
+                max_sliding_window=2148,
+                math_mode=not self.disable_ocr_math,
+            )
+        else:
+            raise ValueError("No recognition_model available for processing")
 
         # Re-align the predictions to the original length, since we skipped some predictions
         for table_ocr_result, table_polys_bad in zip(ocr_results, ocr_polys_bad):

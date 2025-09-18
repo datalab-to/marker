@@ -20,6 +20,7 @@ from marker.schema.text.line import Line
 from marker.settings import settings
 from marker.util import matrix_intersection_area, sort_text_lines
 from marker.utils.image import is_blank_image
+from marker.utils.model_call import call_model_sync
 
 
 class LineBuilder(BaseBuilder):
@@ -84,14 +85,16 @@ class LineBuilder(BaseBuilder):
 
     def __init__(
         self,
-        detection_model: DetectionPredictor,
-        ocr_error_model: OCRErrorPredictor,
+        detection_model: DetectionPredictor = None,
+        ocr_error_model: OCRErrorPredictor = None,
+        artifact_dict: dict = None,
         config=None,
     ):
         super().__init__(config)
-
+        
         self.detection_model = detection_model
         self.ocr_error_model = ocr_error_model
+        self.artifact_dict = artifact_dict or {}
 
     def __call__(self, document: Document, provider: PdfProvider):
         # Disable inline detection for documents where layout model doesn't detect any equations
@@ -117,9 +120,35 @@ class LineBuilder(BaseBuilder):
         self, page_images: List[Image.Image], run_detection: List[bool]
     ):
         self.detection_model.disable_tqdm = self.disable_tqdm
-        page_detection_results = self.detection_model(
-            images=page_images, batch_size=self.get_detection_batch_size()
-        )
+        # Use the detection_model directly if it's available, otherwise use the model from artifact_dict
+        if self.detection_model is not None:
+            page_detection_results = call_model_sync(
+                "detection_model",
+                {"detection_model": self.detection_model},
+                images=page_images, batch_size=self.get_detection_batch_size()
+            )
+        elif "detection_model" in self.artifact_dict:
+            page_detection_results = call_model_sync(
+                "detection_model",
+                self.artifact_dict,
+                images=page_images, batch_size=self.get_detection_batch_size()
+            )
+        else:
+            raise ValueError("No detection_model available for processing")
+        
+        assert len(page_detection_results) == sum(run_detection)
+        detection_results = []
+        idx = 0
+        for good in run_detection:
+            if good:
+                detection_results.append(page_detection_results[idx])
+                idx += 1
+            else:
+                detection_results.append(None)
+        assert idx == len(page_images)
+        
+        assert len(run_detection) == len(detection_results)
+        return detection_results
 
         assert len(page_detection_results) == sum(run_detection)
         detection_results = []
@@ -243,9 +272,21 @@ class LineBuilder(BaseBuilder):
             page_texts.append(page_text)
 
         self.ocr_error_model.disable_tqdm = self.disable_tqdm
-        ocr_error_detection_results = self.ocr_error_model(
-            page_texts, batch_size=int(self.get_ocr_error_batch_size())
-        )
+        # Use the ocr_error_model directly if it's available, otherwise use the model from artifact_dict
+        if self.ocr_error_model is not None:
+            ocr_error_detection_results = call_model_sync(
+                "ocr_error_model",
+                {"ocr_error_model": self.ocr_error_model},
+                page_texts, batch_size=int(self.get_ocr_error_batch_size())
+            )
+        elif "ocr_error_model" in self.artifact_dict:
+            ocr_error_detection_results = call_model_sync(
+                "ocr_error_model",
+                self.artifact_dict,
+                page_texts, batch_size=int(self.get_ocr_error_batch_size())
+            )
+        else:
+            raise ValueError("No ocr_error_model available for processing")
         return ocr_error_detection_results
 
     def check_line_overlaps(

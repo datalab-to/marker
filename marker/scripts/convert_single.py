@@ -14,22 +14,29 @@ from marker.config.printer import CustomClickPrinter
 from marker.logger import configure_logging, get_logger
 from marker.models import create_model_dict
 from marker.output import save_output
+from marker.utils.device_mode import detect_device_mode
 
 configure_logging()
 logger = get_logger()
 
 
-@click.command(cls=CustomClickPrinter, help="Convert a single PDF to markdown.")
+@click.command(help="Convert a single PDF to markdown.")
+
 @click.argument("fpath", type=str)
 @ConfigParser.common_options
 def convert_single_cli(fpath: str, **kwargs):
-    models = create_model_dict()
-    start = time.time()
+    # Detect device mode
+    device_mode = detect_device_mode()
+    logger.info(f"Detected device mode: {device_mode}")
+    
     config_parser = ConfigParser(kwargs)
+    config_dict = config_parser.generate_config_dict()
+    models = create_model_dict(config=config_dict)
+    start = time.time()
 
     converter_cls = config_parser.get_converter_cls()
     converter = converter_cls(
-        config=config_parser.generate_config_dict(),
+        config=config_dict,
         artifact_dict=models,
         processor_list=config_parser.get_processors(),
         renderer=config_parser.get_renderer(),

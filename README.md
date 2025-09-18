@@ -388,8 +388,98 @@ When running with the `--use_llm` flag, you have a choice of services you can us
 - `Claude` - this will use the anthropic API.  You can configure `--claude_api_key`, and `--claude_model_name`.  To use it, set `--llm_service=marker.services.claude.ClaudeService`.
 - `OpenAI` - this supports any openai-like endpoint. You can configure `--openai_api_key`, `--openai_model`, and `--openai_base_url`. To use it, set `--llm_service=marker.services.openai.OpenAIService`.
 - `Azure OpenAI` - this uses the Azure OpenAI service. You can configure `--azure_endpoint`, `--azure_api_key`, and `--deployment_name`. To use it, set `--llm_service=marker.services.azure_openai.AzureOpenAIService`.
+- `Llama-CPP` - this uses the llama.cpp server as a remote LLM service. You can configure `--llama_cpp_base_url` and `--llama_cpp_model`. To use it, set `--llm_service=marker.services.llama_cpp.LlamaCPPService`.
 
 These services may have additional optional configuration as well - you can see it by viewing the classes.
+
+## Llama-CPP Service Configuration
+
+The Llama-CPP service (`marker.services.llama_cpp.LlamaCPPService`) has been simplified to focus on essential configuration options:
+
+### Basic Configuration
+- `llama_cpp_base_url` - The base URL for the llama.cpp server (default: "http://192.168.68.186:8080")
+- `llama_cpp_model` - The model name to use for inference (default: "NuMarkdown")
+
+### Environment Variables
+
+Configuration can also be set using environment variables:
+
+- `LLAMA_CPP_BASE_URL` - Base URL for the llama.cpp server (default: "http://192.168.68.186:8080")
+- `LLAMA_CPP_MODEL` - Model name to use for inference (default: "NuMarkdown")
+
+### Usage Examples
+
+To use the Llama-CPP service with marker, you can specify it via the command line:
+
+```shell
+marker_single /path/to/file.pdf --use_llm --llm_service marker.services.llama_cpp.LlamaCPPService
+```
+
+You can also set the configuration via environment variables:
+
+```shell
+export LLAMA_CPP_BASE_URL=http://192.168.68.186:8080
+export LLAMA_CPP_MODEL=NuMarkdown
+marker_single /path/to/file.pdf --use_llm --llm_service marker.services.llama_cpp.LlamaCPPService
+```
+
+Or pass configuration directly via command line arguments:
+
+```shell
+marker_single /path/to/file.pdf --use_llm --llm_service marker.services.llama_cpp.LlamaCPPService --llama_cpp_base_url http://192.168.68.186:8080 --llama_cpp_model NuMarkdown
+```
+
+Note that XPU handling is done by the external llama.cpp server, so no additional configuration is needed for XPU support.
+
+## XPU DDP Support
+
+Marker now supports DistributedDataParallel (DDP) for XPU devices to improve inference performance by parallelizing processing across multiple processes on XPU devices.
+
+### Enabling XPU DDP
+
+To enable DDP support for XPU devices, set the following environment variable:
+
+```bash
+export USE_XPU_DDP=true
+```
+
+### Requirements
+
+- Intel Extension for PyTorch (IPEX) must be installed
+- oneCCL bindings for PyTorch must be available:
+```bash
+pip install oneccl-bindings-for-pytorch -f https://developer.intel.com/ipex-whl-stable-xpu
+```
+
+### Usage
+
+To enable parallel processing on XPU devices, launch with MPI:
+
+```bash
+export USE_XPU_DDP=true
+mpirun -n [num_processes] marker_chunk_convert input_dir output_dir
+```
+
+For single document processing with parallel processing:
+
+```bash
+export USE_XPU_DDP=true
+mpirun -n [num_processes] marker_single document.pdf
+```
+
+Where `[num_processes]` should be replaced with the actual number of parallel processes you want to use (e.g., 4).
+
+**Important Note on Process Count:**
+- For `marker_chunk_convert`: The optimal number of processes is automatically calculated based on available VRAM using the same dynamic calculation as the existing multiprocessing implementation. The system determines the number of workers based on your device's VRAM and a peak worker VRAM estimate.
+- For `marker_single`: Since this is a single-document processor that doesn't use the batch sizing algorithm, you'll need to determine the appropriate number of processes based on your XPU VRAM and the models you're using. A good starting point is 2-4 processes for most XPU devices.
+
+For example, to use 4 parallel processes:
+```bash
+export USE_XPU_DDP=true
+mpirun -n 4 marker_single document.pdf
+```
+
+Note: DDP is opt-in and will not affect existing CUDA or CPU workflows. The parallel processing is achieved by creating multiple processes, each with its own copy of the models, all running on the XPU device(s). For `marker_chunk_convert`, the DDP implementation follows the same dynamic worker calculation pattern as the existing implementation. For `marker_single`, the number of processes must be specified manually when launching with MPI.
 
 # Internals
 

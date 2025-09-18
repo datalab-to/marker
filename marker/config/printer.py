@@ -97,4 +97,4 @@ class CustomClickPrinter(click.Command):
         if display_help:
             ctx.exit()
 
-        super().parse_args(ctx, args)
+        return super().parse_args(ctx, args)

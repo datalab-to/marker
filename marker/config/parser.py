@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Dict, Any
 
 import click
 
@@ -82,9 +82,65 @@ class ConfigParser:
             default=None,
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
+        # Add this around line 80 in marker/config/parser.py
+        fn = click.option(
+            "--use_llm",
+            is_flag=True,
+            default=False,
+            help="Enable LLM processing for enhanced accuracy.",
+        )(fn)
+        fn = click.option(
+            "--force_ocr",
+            is_flag=True,
+            default=False,
+            help="Force OCR processing on the entire document.",
+        )(fn)
+        fn = click.option(
+            "--strip_existing_ocr",
+            is_flag=True,
+            default=False,
+            help="Remove all existing OCR text in the document and re-OCR with surya.",
+        )(fn)
+        fn = click.option(
+            "--redo_inline_math",
+            is_flag=True,
+            default=False,
+            help="Redo inline math conversion with highest quality.",
+        )(fn)
+        fn = click.option(
+            "--paginate_output",
+            is_flag=True,
+            default=False,
+            help="Paginate the output with page number markers.",
+        )(fn)
+        fn = click.option(
+            "--block_correction_prompt",
+            type=str,
+            default=None,
+            help="Prompt for LLM block correction.",
+        )(fn)
+        fn = click.option(
+            "--model_workers",
+            type=str,
+            default=None,
+            help="Model workers in format model1:N,model2:M (e.g., layout_model:4,recognition_model:2)",
+        )(fn)
+        fn = click.option(
+            "--flush-timeout-ms",
+            type=int,
+            default=5,
+            help="Flush timeout in milliseconds for continuous batching (default: 5ms)",
+        )(fn)
+        fn = click.option(
+            "--intel-batching",
+            type=bool,
+            default=None,
+            help="Enable Intel continuous batching (default: on when XPU is active)",
+        )(fn)
+
         return fn
 
-    def generate_config_dict(self) -> Dict[str, any]:
+    def generate_config_dict(self) -> Dict[str, Any]:
         config = {}
         output_dir = self.cli_options.get("output_dir", settings.OUTPUT_DIR)
         for k, v in self.cli_options.items():
@@ -106,6 +162,23 @@ class ConfigParser:
                     config["pdftext_workers"] = 1
                 case "disable_image_extraction":
                     config["extract_images"] = False
+                case "force_ocr":
+                    config["force_ocr"] = True
+                case "strip_existing_ocr":
+                    config["strip_existing_ocr"] = True
+                case "redo_inline_math":
+                    config["redo_inline_math"] = True
+                case "paginate_output":
+                    config["paginate_output"] = True
+                case "block_correction_prompt":
+                    config["block_correction_prompt"] = v
+                case "model_workers":
+                    # Ignore model_workers parameter as DDP is no longer used
+                    logger.warning("model_workers parameter is ignored as DDP is no longer supported")
+                case "flush_timeout_ms":
+                    config["flush_timeout_ms"] = v
+                case "intel_batching":
+                    config["intel_batching"] = v
                 case _:
                     if k in crawler.attr_set:
                         config[k] = v
@@ -117,14 +190,16 @@ class ConfigParser:
         return config
 
     def get_llm_service(self):
-        # Only return an LLM service when use_llm is enabled
-        if not self.cli_options.get("use_llm", False):
+        # Return an LLM service when either use_llm is enabled OR llm_service is specified
+        if self.cli_options.get("use_llm", False) or self.cli_options.get("llm_service", None) is not None:
+            # We want to use LLM, so proceed
+            service_cls = self.cli_options.get("llm_service", None)
+            if service_cls is None:
+                service_cls = "marker.services.gemini.GoogleGeminiService"
+            return service_cls
+        else:
+            # We don't want to use LLM
             return None
-
-        service_cls = self.cli_options.get("llm_service", None)
-        if service_cls is None:
-            service_cls = "marker.services.gemini.GoogleGeminiService"
-        return service_cls
 
     def get_renderer(self):
         match self.cli_options["output_format"]:

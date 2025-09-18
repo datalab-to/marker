@@ -26,7 +26,7 @@ from marker.util import classes_to_strings, strings_to_classes
 
 @pytest.fixture(scope="session")
 def model_dict():
-    model_dict = create_model_dict()
+    model_dict = create_model_dict(config={})
     yield model_dict
     del model_dict
 

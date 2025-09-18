@@ -14,6 +14,7 @@ class BaseConverter:
         assign_config(self, config)
         self.config = config
         self.llm_service = None
+        self.artifact_dict = {}
 
         # Download render font, needed for some providers
         download_font()
@@ -31,7 +32,7 @@ class BaseConverter:
                 continue
             elif param_name == 'config':
                 resolved_kwargs[param_name] = self.config
-            elif param.name in self.artifact_dict:
+            elif param_name in self.artifact_dict:
                 resolved_kwargs[param_name] = self.artifact_dict[param_name]
             elif param.default != inspect.Parameter.empty:
                 resolved_kwargs[param_name] = param.default

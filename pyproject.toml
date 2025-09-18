@@ -16,13 +16,12 @@ include = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.14"
 Pillow = "^10.1.0"
 pydantic = "^2.4.2"
 pydantic-settings = "^2.0.3"
 transformers = "^4.45.2"
 python-dotenv = "^1.0.0"
-torch = "^2.7.0"
 tqdm = "^4.66.1"
 ftfy = "^6.1.1"
 rapidfuzz = "^3.8.1"
@@ -76,3 +75,8 @@ marker_server = "marker.scripts.server:server_cli"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+priority = "explicit"

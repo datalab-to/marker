@@ -10,6 +10,7 @@ from marker.processors import BaseProcessor
 from marker.schema import BlockTypes
 from marker.schema.document import Document
 from marker.settings import settings
+from marker.utils.model_call import call_model_sync
 
 MATH_TAG_PATTERN = re.compile(r"<math[^>]*>(.*?)</math>")
 
@@ -38,10 +39,11 @@ class EquationProcessor(BaseProcessor):
     ] = False
     drop_repeated_text: Annotated[bool, "Drop repeated text in OCR results."] = False
 
-    def __init__(self, recognition_model: RecognitionPredictor, config=None):
+    def __init__(self, recognition_model: RecognitionPredictor = None, artifact_dict: dict = None, config=None):
         super().__init__(config)
-
+        
         self.recognition_model = recognition_model
+        self.artifact_dict = artifact_dict or {}
 
     def get_batch_size(self):
         # Set to 1/4th of OCR batch size due to sequence length with tiling
@@ -126,16 +128,35 @@ class EquationProcessor(BaseProcessor):
         bboxes: List[List[List[float]]],
     ):
         self.recognition_model.disable_tqdm = self.disable_tqdm
-        predictions: List[OCRResult] = self.recognition_model(
-            images=page_images,
-            bboxes=bboxes,
-            task_names=["ocr_with_boxes"] * len(page_images),
-            recognition_batch_size=self.get_batch_size(),
-            sort_lines=False,
-            drop_repeated_text=self.drop_repeated_text,
-            max_tokens=2048,
-            max_sliding_window=2148,
-        )
+        # Use the recognition_model directly if it's available, otherwise use the model from artifact_dict
+        if self.recognition_model is not None:
+            predictions: List[OCRResult] = call_model_sync(
+                "recognition_model",
+                {"recognition_model": self.recognition_model},
+                images=page_images,
+                bboxes=bboxes,
+                task_names=["ocr_with_boxes"] * len(page_images),
+                recognition_batch_size=self.get_batch_size(),
+                sort_lines=False,
+                drop_repeated_text=self.drop_repeated_text,
+                max_tokens=2048,
+                max_sliding_window=2148,
+            )
+        elif "recognition_model" in self.artifact_dict:
+            predictions: List[OCRResult] = call_model_sync(
+                "recognition_model",
+                self.artifact_dict,
+                images=page_images,
+                bboxes=bboxes,
+                task_names=["ocr_with_boxes"] * len(page_images),
+                recognition_batch_size=self.get_batch_size(),
+                sort_lines=False,
+                drop_repeated_text=self.drop_repeated_text,
+                max_tokens=2048,
+                max_sliding_window=2148,
+            )
+        else:
+            raise ValueError("No recognition_model available for processing")
 
         equation_predictions = [
             [line.text.strip() for line in page_prediction.text_lines]
