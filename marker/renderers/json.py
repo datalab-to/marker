@@ -1,4 +1,4 @@
-from typing import Annotated, Dict, List, Tuple
+from typing import Annotated, Dict, List, Tuple, Union
 
 from pydantic import BaseModel
 
@@ -15,13 +15,22 @@ class JSONBlockOutput(BaseModel):
     html: str
     polygon: List[List[float]]
     bbox: List[float]
-    children: List["JSONBlockOutput"] | None = None
+    children: List["JSONBlockOutputType"] | None = None
     section_hierarchy: Dict[int, str] | None = None
     images: dict | None = None
 
 
+class JSONTableCellOutput(JSONBlockOutput):
+    confidence: float | None = None 
+
+
+class JSONTableOutput(JSONBlockOutput):
+    table_confidence: float | None = None 
+
+
+JSONBlockOutputType = Union[JSONBlockOutput, JSONTableCellOutput, JSONTableOutput]
 class JSONOutput(BaseModel):
-    children: List[JSONBlockOutput]
+    children: List[JSONBlockOutputType]
     block_type: str = str(BlockTypes.Document)
     metadata: dict
 
@@ -49,36 +58,54 @@ class JSONRenderer(BaseRenderer):
 
     def extract_json(self, document: Document, block_output: BlockOutput):
         cls = get_block_class(block_output.id.block_type)
+         
+        page = document.get_page(block_output.id.page_id)
+        block = page.get_block(block_output.id) if page else None
+        
+        base_fields = {
+            "polygon": block_output.polygon.polygon,
+            "bbox": block_output.polygon.bbox,
+            "id": str(block_output.id),
+            "block_type": str(block_output.id.block_type),
+            "section_hierarchy": reformat_section_hierarchy(block_output.section_hierarchy),
+        }
+
         if cls.__base__ == Block:
             html, images = self.extract_block_html(document, block_output)
-            return JSONBlockOutput(
-                html=html,
-                polygon=block_output.polygon.polygon,
-                bbox=block_output.polygon.bbox,
-                id=str(block_output.id),
-                block_type=str(block_output.id.block_type),
-                images=images,
-                section_hierarchy=reformat_section_hierarchy(
-                    block_output.section_hierarchy
-                ),
-            )
+            if block_output.id.block_type == BlockTypes.TableCell:
+                    confidence = block.confidence if block and hasattr(block, 'confidence') else None
+                    return JSONTableCellOutput(
+                        **base_fields,
+                        html=html,
+                        images=images,
+                        confidence=confidence,
+                    )
+            else:
+                return JSONBlockOutput(
+                    **base_fields,
+                    html=html,
+                    images=images,
+                )
         else:
             children = []
             for child in block_output.children:
                 child_output = self.extract_json(document, child)
                 children.append(child_output)
 
-            return JSONBlockOutput(
-                html=block_output.html,
-                polygon=block_output.polygon.polygon,
-                bbox=block_output.polygon.bbox,
-                id=str(block_output.id),
-                block_type=str(block_output.id.block_type),
-                children=children,
-                section_hierarchy=reformat_section_hierarchy(
-                    block_output.section_hierarchy
-                ),
-            )
+            if block_output.id.block_type in [BlockTypes.Table, BlockTypes.TableOfContents, BlockTypes.Form]:
+                table_confidence = block.table_confidence if block and hasattr(block, 'table_confidence') else None
+                return JSONTableOutput(
+                    **base_fields,
+                    html=block_output.html,
+                    children=children,
+                    table_confidence=table_confidence,
+                )
+            else:
+                return JSONBlockOutput(
+                    **base_fields,
+                    html=block_output.html,
+                    children=children,
+                )
 
     def __call__(self, document: Document) -> JSONOutput:
         document_output = document.render(self.block_config)
