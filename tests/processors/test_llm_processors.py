@@ -7,6 +7,7 @@ from marker.processors.llm.llm_equation import LLMEquationProcessor
 from marker.processors.llm.llm_form import LLMFormProcessor
 from marker.processors.llm.llm_image_description import LLMImageDescriptionProcessor
 from marker.processors.llm.llm_meta import LLMSimpleBlockMetaProcessor
+from marker.processors.llm.llm_strikethrough import LLMStrikethroughProcessor
 from marker.processors.llm.llm_table import LLMTableProcessor
 from marker.processors.table import TableProcessor
 from marker.renderers.markdown import MarkdownRenderer
@@ -180,3 +181,32 @@ def test_multi_llm_processors(pdf_document):
     contained_equations = pdf_document.contained_blocks((BlockTypes.Equation,))
     print([equation.html for equation in contained_equations])
     assert all(equation.html == description for equation in contained_equations)
+
+@pytest.mark.filename("adversarial.pdf")
+@pytest.mark.config({"page_range": [0]})
+def test_llm_strikethrough_processor(pdf_document):
+    corrected_html = "<p>This is regular text and <del>this text is struck through</del> and this is normal again.</p>"
+    mock_cls = Mock()
+    mock_cls.return_value = {
+        "analysis": "The text 'this text is struck through' has a strikethrough line in the image.",
+        "corrections_needed": True,
+        "corrected_html": corrected_html
+    }
+
+    config = {"use_llm": True, "gemini_api_key": "test"}
+    processor_lst = [LLMStrikethroughProcessor(config)]
+    processor = LLMSimpleBlockMetaProcessor(processor_lst, mock_cls, config)
+    processor(pdf_document)
+
+    text_blocks = pdf_document.contained_blocks((BlockTypes.Text,))
+
+    has_strikethrough = any(
+        block.html and "<del>" in block.html
+        for block in text_blocks
+    )
+    assert has_strikethrough, "No text blocks contain strikethrough HTML"
+
+    renderer = MarkdownRenderer()
+    rendered_md = renderer(pdf_document).markdown
+
+    assert "~~this text is struck through~~" in rendered_md or "<del>" in rendered_md
