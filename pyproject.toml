@@ -45,6 +45,7 @@ python-pptx = {version = "^1.0.2", optional = true}
 ebooklib = {version = "^0.18", optional = true}
 weasyprint = {version = "^63.1", optional = true}
 openai = "^1.65.2"
+psutil = "^7.1.0"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.0.0"
