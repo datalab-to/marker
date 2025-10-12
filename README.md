@@ -459,7 +459,7 @@ We created a [benchmark set](https://huggingface.co/datasets/datalab-to/marker_b
 | mathpix    | 6.36223  | 86.4281         | 4.15626   |
 | docling    | 3.69949  | 86.7073         | 3.70429   |
 
-Benchmarks were run on an H100 for markjer and docling - llamaparse and mathpix used their cloud services.  We can also look at it by document type:
+Benchmarks were run on an H100 for marker and docling - llamaparse and mathpix used their cloud services.  We can also look at it by document type:
 
 <img src="data/images/per_doc.png" width="1000px"/>
 
