@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # GPU-enabled version (recommended for production)
+  marker-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    container_name: marker-pdf-gpu
+    ports:
+      - "8001:8001"
+    volumes:
+      # Persist model cache to avoid redownloading
+      - marker-models:/root/.cache/huggingface
+      - marker-torch:/root/.cache/torch
+      # Optional: Mount upload and output directories
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+    environment:
+      # Server Configuration
+      - PORT=8001
+      - HOST=0.0.0.0
+      - TORCH_DEVICE=cuda
+
+      # LLM Configuration (uncomment and configure as needed)
+      # - USE_LLM=true
+      # - LLM_SERVICE=marker.services.openai.OpenAIService
+
+      # OpenAI Configuration
+      # - OPENAI_API_KEY=your-api-key-here
+      # - OPENAI_MODEL=gpt-4o-mini
+      # - OPENAI_BASE_URL=https://api.openai.com/v1
+
+      # Gemini Configuration (default)
+      # - GEMINI_API_KEY=your-api-key-here
+      # - GEMINI_MODEL_NAME=gemini-2.0-flash
+
+      # Claude Configuration
+      # - CLAUDE_API_KEY=your-api-key-here
+      # - CLAUDE_MODEL_NAME=claude-3-7-sonnet-20250219
+      # - MAX_CLAUDE_TOKENS=8192
+
+      # Azure OpenAI Configuration
+      # - AZURE_ENDPOINT=your-endpoint-here
+      # - AZURE_API_KEY=your-api-key-here
+      # - AZURE_API_VERSION=2024-02-15-preview
+      # - DEPLOYMENT_NAME=your-deployment-name
+
+      # Ollama Configuration (for local models)
+      # - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # - OLLAMA_MODEL=llama3.2-vision
+
+      # Processing Options (OpenWebUI compatible)
+      # - SKIP_CACHE=false
+      # - FORCE_OCR=false
+      # - PAGINATE=false
+      # - DISABLE_IMAGE_EXTRACTION=false
+      # - OUTPUT_FORMAT=markdown
+
+      # Advanced Options
+      # - LANGS=en
+      # - BATCH_MULTIPLIER=1
+      # - MAX_PAGES=null
+      # - TIMEOUT=30
+      # - MAX_RETRIES=2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # CPU-only version (smaller, no GPU required)
+  marker-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    container_name: marker-pdf-cpu
+    ports:
+      - "8001:8001"
+    volumes:
+      # Persist model cache to avoid redownloading
+      - marker-models-cpu:/root/.cache/huggingface
+      - marker-torch-cpu:/root/.cache/torch
+      # Optional: Mount upload and output directories
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+    environment:
+      # Server Configuration
+      - PORT=8001
+      - HOST=0.0.0.0
+      - TORCH_DEVICE=cpu
+
+      # LLM Configuration (same as GPU version)
+      # - USE_LLM=true
+      # - LLM_SERVICE=marker.services.openai.OpenAIService
+
+      # OpenAI Configuration
+      # - OPENAI_API_KEY=your-api-key-here
+      # - OPENAI_MODEL=gpt-4o-mini
+
+      # Processing Options
+      # - SKIP_CACHE=false
+      # - FORCE_OCR=false
+      # - PAGINATE=false
+      # - OUTPUT_FORMAT=markdown
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles:
+      - cpu
+
+volumes:
+  marker-models:
+    driver: local
+  marker-torch:
+    driver: local
+  marker-models-cpu:
+    driver: local
+  marker-torch-cpu:
+    driver: local
