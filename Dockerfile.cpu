@@ -1,0 +1,69 @@
+# Marker PDF - CPU-only Docker Image
+# This is a smaller image without CUDA support for CPU-only deployments
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TORCH_DEVICE=cpu \
+    HF_HOME=/root/.cache/huggingface \
+    TRANSFORMERS_CACHE=/root/.cache/huggingface \
+    TORCH_HOME=/root/.cache/torch
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    # Font rendering libraries
+    libpango-1.0-0 \
+    libharfbuzz0b \
+    libpangoft2-1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libcairo2 \
+    libffi-dev \
+    shared-mime-info \
+    # Additional utilities
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Set working directory
+WORKDIR /app
+
+# Copy project files
+COPY pyproject.toml poetry.lock* README.md ./
+COPY marker ./marker
+COPY marker_server.py ./
+COPY static ./static
+
+# Install marker with all optional dependencies (CPU-only PyTorch)
+RUN pip install --no-cache-dir -e ".[full]"
+
+# Install additional server dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.115.4 \
+    uvicorn==0.32.0 \
+    python-multipart==0.0.16
+
+# Create necessary directories
+RUN mkdir -p /app/uploads /app/output /root/.cache/huggingface /root/.cache/torch
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Expose port
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8001/ || exit 1
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command
+CMD ["marker_server", "--port", "8001", "--host", "0.0.0.0"]
