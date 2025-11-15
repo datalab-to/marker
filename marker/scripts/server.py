@@ -81,6 +81,12 @@ class CommonParams(BaseModel):
             description="The format to output the text in.  Can be 'markdown', 'json', or 'html'.  Defaults to 'markdown'."
         ),
     ] = "markdown"
+    use_llm: Annotated[
+        bool,
+        Field(
+            description="Enable higher quality processing with LLMs. Requires LLM API credentials to be set via environment variables (e.g., GEMINI_API_KEY, OPENAI_API_KEY, CLAUDE_API_KEY, etc.). Defaults to False."
+        ),
+    ] = False
 
 
 async def _convert_pdf(params: CommonParams):
@@ -138,6 +144,7 @@ async def convert_pdf_upload(
     force_ocr: Optional[bool] = Form(default=False),
     paginate_output: Optional[bool] = Form(default=False),
     output_format: Optional[str] = Form(default="markdown"),
+    use_llm: Optional[bool] = Form(default=False),
     file: UploadFile = File(
         ..., description="The PDF file to convert.", media_type="application/pdf"
     ),
@@ -153,6 +160,7 @@ async def convert_pdf_upload(
         force_ocr=force_ocr,
         paginate_output=paginate_output,
         output_format=output_format,
+        use_llm=use_llm,
     )
     results = await _convert_pdf(params)
     os.remove(upload_path)
