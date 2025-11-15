@@ -11,8 +11,7 @@ services:
       - "8001:8001"
     volumes:
       # Persist model cache to avoid redownloading
-      - marker-models:/root/.cache/huggingface
-      - marker-torch:/root/.cache/torch
+      - ./datalab:/root/.cache/datalab
       # Optional: Mount upload and output directories
       - ./uploads:/app/uploads
       - ./output:/app/output
@@ -88,8 +87,7 @@ services:
       - "8001:8001"
     volumes:
       # Persist model cache to avoid redownloading
-      - marker-models-cpu:/root/.cache/huggingface
-      - marker-torch-cpu:/root/.cache/torch
+      - ./datalab:/root/.cache/datalab
       # Optional: Mount upload and output directories
       - ./uploads:/app/uploads
       - ./output:/app/output
@@ -122,12 +120,4 @@ services:
     profiles:
       - cpu
 
-volumes:
-  marker-models:
-    driver: local
-  marker-torch:
-    driver: local
-  marker-models-cpu:
-    driver: local
-  marker-torch-cpu:
-    driver: local
+volumes: {}
