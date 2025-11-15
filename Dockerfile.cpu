@@ -39,6 +39,10 @@ COPY marker ./marker
 COPY marker_server.py ./
 COPY static ./static
 
+# Install CPU-only PyTorch first (before other dependencies)
+# This prevents pip from downloading the CUDA-enabled version
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Install marker with all optional dependencies (CPU-only PyTorch)
 RUN pip install --no-cache-dir -e ".[full]"
 

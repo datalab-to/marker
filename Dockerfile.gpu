@@ -1,7 +1,8 @@
 # Marker PDF - GPU-enabled Docker Image
 # This image includes CUDA support for GPU acceleration
+# CUDA 12.8 is required for Blackwell architecture GPUs (RTX 50-series)
 
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -45,6 +46,10 @@ COPY pyproject.toml poetry.lock* README.md ./
 COPY marker ./marker
 COPY marker_server.py ./
 COPY static ./static
+
+# Install PyTorch with CUDA 12.8 support first (for Blackwell/RTX 50-series compatibility)
+# This ensures compatibility with sm_120 compute capability (RTX 5060 Ti, etc.)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
 # Install marker with all optional dependencies
 RUN pip install --no-cache-dir -e ".[full]"
