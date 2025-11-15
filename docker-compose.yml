@@ -1,0 +1,64 @@
+version: '3.8'
+
+# Single-file docker-compose for Portainer deployments.
+#
+# Notes:
+# - This stack builds the image from the local `Dockerfile` (build: .). If you prefer
+#   to pull a pre-built image, replace `build: .` with `image: yourrepo/marker:tag`.
+# - Uses a Docker named volume `uploads` to avoid host path issues on Windows.
+#   In Portainer you can change the volume to a bind mount if you want local access.
+
+services:
+  marker:
+    # Option B: let Portainer build directly from this Git repository.
+    # For this to work, deploy the stack using Portainer's "Repository" option
+    # (so the Docker host has the repository content and Dockerfile available).
+    build: .
+    # Optional: if you already push an image, you can instead use image: youruser/marker:latest
+    # image: youruser/marker:latest
+    container_name: marker
+    ports:
+      - "8001:8001"
+    environment:
+      TORCH_DEVICE: "cpu"
+      PYTHONUNBUFFERED: "1"
+      # Add other env vars here, e.g. MODEL_PATH: "/models/model.pt"
+    volumes:
+      # Use a named volume to avoid Windows host path complications in Portainer
+      - uploads:/app/uploads
+      # To use a host bind mount instead, replace the line above with something like:
+      # - /absolute/path/on/host/uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  uploads:
+
+# --- Notes: how to build & publish an image (run locally on your machine) ---
+# 1) Build the image locally and tag it for Docker Hub (replace youruser):
+#
+#    docker build -t youruser/marker:latest .
+#
+# 2) Log in and push:
+#
+#    docker login
+#    docker push youruser/marker:latest
+#
+# 3) In Portainer, use this compose (with `image: youruser/marker:latest`) and
+#    deploy the stack. Portainer will pull the image from Docker Hub.
+#
+# Alternative: let Portainer build from a Git repository
+# - In Portainer Stacks, choose the "Repository" option and supply your Git URL.
+# - Use a compose with a build context pointing to the repo (or leave `build: .`
+#   if Portainer is configured to use the repository content as build context).
+
+
