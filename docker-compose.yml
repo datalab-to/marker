@@ -119,5 +119,3 @@ services:
       start_period: 60s
     profiles:
       - cpu
-
-volumes: {}
