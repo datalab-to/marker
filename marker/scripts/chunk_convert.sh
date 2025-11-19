@@ -26,6 +26,7 @@ fi
 
 INPUT_FOLDER=$1
 OUTPUT_FOLDER=$2
+ADDITIONAL_ARGS=${3:-""}
 
 # Ensure output folder exists
 mkdir -p "$OUTPUT_FOLDER"
@@ -37,7 +38,11 @@ for (( i=0; i<$NUM_DEVICES; i++ )); do
     export NUM_DEVICES
     export NUM_WORKERS
     echo "Running marker on GPU $DEVICE_NUM"
-    cmd="CUDA_VISIBLE_DEVICES=$DEVICE_NUM marker $INPUT_FOLDER --output_dir $OUTPUT_FOLDER --num_chunks $NUM_DEVICES --chunk_idx $DEVICE_NUM --workers $NUM_WORKERS"
+    cmd="CUDA_VISIBLE_DEVICES=$DEVICE_NUM marker $INPUT_FOLDER --output_dir $OUTPUT_FOLDER"
+    if [[ -n "$ADDITIONAL_ARGS" ]]; then
+        cmd="$cmd $ADDITIONAL_ARGS"
+    fi
+    cmd="$cmd --num_chunks $NUM_DEVICES --chunk_idx $DEVICE_NUM --workers $NUM_WORKERS"
     eval $cmd &
 
     sleep 5
