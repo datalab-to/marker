@@ -74,6 +74,8 @@ Adversarial training <i>(AT)</i> <a href='#page-9-1'>[23]</a>, which aims to min
 """
 
     def rewrite_blocks(self, document: Document):
+        if self.llm_tables_only:
+            return
         if not self.redo_inline_math:
             return
 

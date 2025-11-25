@@ -51,6 +51,11 @@ Output:
 ```
 """
 
+    def inference_blocks(self, document: Document):
+        if self.llm_tables_only:
+            return []
+        return super().inference_blocks(document)
+
     def block_prompts(self, document: Document) -> List[PromptData]:
         prompt_data = []
         for block in self.inference_blocks(document):

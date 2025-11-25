@@ -69,6 +69,8 @@ analysis: The equations are not formatted as LaTeX, or enclosed in math tags.
 """
 
     def inference_blocks(self, document: Document) -> List[BlockData]:
+        if self.llm_tables_only:
+            return []
         blocks = super().inference_blocks(document)
         out_blocks = []
         for block_data in blocks:

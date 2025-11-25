@@ -143,6 +143,8 @@ Section Headers
             response["blocks"] = json.loads(response["blocks"])
 
     def rewrite_blocks(self, document: Document):
+        if self.llm_tables_only:
+            return
         # Don't show progress if there are no blocks to process
         section_headers = [
             (block, self.normalize_block_json(block, document, page))

@@ -43,6 +43,8 @@ In this figure, a bar chart titled "Fruit Preference Survey" is showing the numb
 """
 
     def inference_blocks(self, document: Document) -> List[BlockData]:
+        if self.llm_tables_only:
+            return []
         blocks = super().inference_blocks(document)
         if self.extract_images or self.disable_llm_image_descriptions:
             return []

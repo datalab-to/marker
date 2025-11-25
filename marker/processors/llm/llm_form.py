@@ -63,6 +63,8 @@ Comparison: The html representation has the labels in the first row and the valu
 """
 
     def inference_blocks(self, document: Document) -> List[BlockData]:
+        if self.llm_tables_only:
+            return []
         blocks = super().inference_blocks(document)
         out_blocks = []
         for block_data in blocks:

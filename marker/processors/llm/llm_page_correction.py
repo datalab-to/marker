@@ -266,6 +266,8 @@ User Prompt
                 continue
 
     def rewrite_blocks(self, document: Document):
+        if self.llm_tables_only:
+            return
         if not self.block_correction_prompt:
             return
 

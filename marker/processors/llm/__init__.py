@@ -51,6 +51,10 @@ class BaseLLMProcessor(BaseProcessor):
         bool,
         "Whether to use the LLM model.",
     ] = False
+    llm_tables_only: Annotated[
+        bool,
+        "Only use LLM for table processing (LLMTableProcessor and LLMTableMergeProcessor).",
+    ] = False
     disable_tqdm: Annotated[
         bool,
         "Whether to disable the tqdm progress bar.",
