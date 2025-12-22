@@ -29,7 +29,7 @@ class LLMMathBlockProcessor(BaseLLMComplexBlockProcessor):
         BlockTypes.Caption,
         BlockTypes.SectionHeader,
         BlockTypes.Footnote,
-    )  # Seconday, can also contain math
+    )  # Secondary, can also contain math
 
     text_math_rewriting_prompt = """You are a text correction expert specializing in accurately reproducing text from images.
 You will receive an image of a text block and extracted text corresponding to the text in the image.

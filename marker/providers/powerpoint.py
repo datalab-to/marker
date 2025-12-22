@@ -54,7 +54,7 @@ class PowerPointProvider(PdfProvider):
             print(traceback.format_exc())
             raise ValueError(f"Error converting PPTX to PDF: {e}")
 
-        # Initalize the PDF provider with the temp pdf path
+        # Initialize the PDF provider with the temp pdf path
         super().__init__(self.temp_pdf_path, config)
 
     def __del__(self):

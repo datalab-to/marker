@@ -19,7 +19,7 @@ NOW THEREFORE, You and Licensor agree as follows:
 (h) "License" means the terms and conditions for use, reproduction, and Distribution as defined in this document.
 (i) “Licensor” means the rights owner or entity authorized by the rights owner that is granting the License, including the persons or entities that may have rights in the Model and/or distributing the Model.
 (j) “Model” means any accompanying machine-learning based assemblies (including checkpoints), consisting of learnt weights, parameters (including optimizer states), corresponding to the model architecture as embodied in the Complementary Material, that have been trained or tuned, in whole or in part on the Data, using the Complementary Material.
-(k) “Output” means the results of operating a Model as embodied in informational content resulting therefrom.
+(k) “Output” means the results of operating a Model as embodied in informational content resulting there from.
 (l) “Third Parties” means individuals or legal entities that are not under common control with Licensor or You.
 (m) "You" (or "Your")  means an individual or legal entity exercising permissions granted by this License and/or making use of the Model for whichever purpose and in any field of use, including usage of the Model in an end-use application, including but not limited to a chatbot, translator, or image generator.
                                               Section II:   INTELLECTUAL PROPERTY RIGHTS

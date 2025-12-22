@@ -26,7 +26,7 @@ Notes:
 
 > modal run marker_modal_deployment.py::download_models
 
-Which will create a [`Modal Volume`](https://modal.com/docs/guide/Volumes) to store them for re-use.
+Which will create a [`Modal Volume`](https://modal.com/docs/guide/Volumes) to store them for reuse.
 
 Once the deploy is finished, you can:
 - Test a file upload locally through your CLI using an `invoke_conversion` command we expose through Modal's [`local_entrypoint`](https://modal.com/docs/reference/modal.App#local_entrypoint)

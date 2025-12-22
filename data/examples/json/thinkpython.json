@@ -65722,7 +65722,7 @@
         {
           "id": "/page/55/Text/12",
           "block_type": "Text",
-          "html": "<p block-type=\"Text\">Wrapping a piece of code up in a function is called <b>encapsulation</b>. One of the benefits of encapsulation is that it attaches a name to the code, which serves as a kind of documentation. Another advantage is that if you re-use the code, it is more concise to call a function twice than to copy and paste the body!</p>",
+          "html": "<p block-type=\"Text\">Wrapping a piece of code up in a function is called <b>encapsulation</b>. One of the benefits of encapsulation is that it attaches a name to the code, which serves as a kind of documentation. Another advantage is that if you reuse the code, it is more concise to call a function twice than to copy and paste the body!</p>",
           "polygon": [
             [
               85.6142578125,
@@ -66838,7 +66838,7 @@
         {
           "id": "/page/57/Text/5",
           "block_type": "Text",
-          "html": "<p block-type=\"Text\">When I wrote circle, I was able to re-use polygon because a many-sided polygon is a good approximation of a circle. But arc is not as cooperative; we can't use polygon or circle to draw an arc.</p>",
+          "html": "<p block-type=\"Text\">When I wrote circle, I was able to reuse polygon because a many-sided polygon is a good approximation of a circle. But arc is not as cooperative; we can't use polygon or circle to draw an arc.</p>",
           "polygon": [
             [
               86.0625,
@@ -66943,7 +66943,7 @@
         {
           "id": "/page/57/Text/8",
           "block_type": "Text",
-          "html": "<p block-type=\"Text\">The second half of this function looks like polygon, but we can't re-use polygon without changing the interface. We could generalize polygon to take an angle as a third argument, but then polygon would no longer be an appropriate name! Instead, let's call the more general function polyline:</p>",
+          "html": "<p block-type=\"Text\">The second half of this function looks like polygon, but we can't reuse polygon without changing the interface. We could generalize polygon to take an angle as a third argument, but then polygon would no longer be an appropriate name! Instead, let's call the more general function polyline:</p>",
           "polygon": [
             [
               85.46484375,
@@ -69563,7 +69563,7 @@
         {
           "id": "/page/61/Text/4",
           "block_type": "Text",
-          "html": "<p block-type=\"Text\"><b>Exercise 4.5.</b> <i>Read about spirals at</i> <a href=\"http://en.wikipedia.org/wiki/Spiral\">http:</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">//</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">en.</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">wikipedia.</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">org/</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">wiki/</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">Spiral</a> <i>; then write</i> <i>a program that draws an Archimedian spiral (or one of the other kinds). Solution:</i> <a href=\"http://thinkpython.com/code/spiral.py\">http:</a> <a href=\"http://thinkpython.com/code/spiral.py\">//</a> <a href=\"http://thinkpython.com/code/spiral.py\">thinkpython.</a> <a href=\"http://thinkpython.com/code/spiral.py\">com/</a> <a href=\"http://thinkpython.com/code/spiral.py\">code/</a> <a href=\"http://thinkpython.com/code/spiral.py\">spiral.</a> <a href=\"http://thinkpython.com/code/spiral.py\">py</a> <i>.</i></p>",
+          "html": "<p block-type=\"Text\"><b>Exercise 4.5.</b> <i>Read about spirals at</i> <a href=\"http://en.wikipedia.org/wiki/Spiral\">http:</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">//</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">en.</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">wikipedia.</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">org/</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">wiki/</a> <a href=\"http://en.wikipedia.org/wiki/Spiral\">Spiral</a> <i>; then write</i> <i>a program that draws an Archimedean spiral (or one of the other kinds). Solution:</i> <a href=\"http://thinkpython.com/code/spiral.py\">http:</a> <a href=\"http://thinkpython.com/code/spiral.py\">//</a> <a href=\"http://thinkpython.com/code/spiral.py\">thinkpython.</a> <a href=\"http://thinkpython.com/code/spiral.py\">com/</a> <a href=\"http://thinkpython.com/code/spiral.py\">code/</a> <a href=\"http://thinkpython.com/code/spiral.py\">spiral.</a> <a href=\"http://thinkpython.com/code/spiral.py\">py</a> <i>.</i></p>",
           "polygon": [
             [
               85.3154296875,
@@ -152798,7 +152798,7 @@
         {
           "id": "/page/186/TextInlineMath/2",
           "block_type": "TextInlineMath",
-          "html": "<p block-type=\"TextInlineMath\"><b>Exercise 17.6.</b> <i>Download the code from this chapter (http://thinkpython.com/code/</i> <i>Time2.py). Change the attributes of</i> Time <i>to be a single integer representing seconds since mid</i> <i>night. Then modify the methods (and the function</i> int_to_time<i>) to work with the new implemen</i> <i>tation. You should not have to modify the test code in</i> main<i>. When you are done, the output should</i> <i>be the same as before. Solution:</i> http://thinkpython.com/code/Time2_soln.py</p>",
+          "html": "<p block-type=\"TextInlineMath\"><b>Exercise 17.6.</b> <i>Download the code from this chapter (http://thinkpython.com/code/</i> <i>Time2.py). Change the attributes of</i> Time <i>to be a single integer representing seconds since mid</i> <i>night. Then modify the methods (and the function</i> int_to_time<i>) to work with the new implement</i> <i>tation. You should not have to modify the test code in</i> main<i>. When you are done, the output should</i> <i>be the same as before. Solution:</i> http://thinkpython.com/code/Time2_soln.py</p>",
           "polygon": [
             [
               129.2431640625,
@@ -186721,7 +186721,7 @@
         {
           "id": "/page/236/Text/7",
           "block_type": "Text",
-          "html": "<p block-type=\"Text\">Figure <a href=\"#page-236-1\">C.5</a> shows the result. copy.copy make a shallow copy, so box and box2 have their own width and height, but they share the same embedded Point object. This kind of sharing is usually fine with immutable objects, but with mutable types, it is highly errorprone.</p>",
+          "html": "<p block-type=\"Text\">Figure <a href=\"#page-236-1\">C.5</a> shows the result. copy.copy make a shallow copy, so box and box2 have their own width and height, but they share the same embedded Point object. This kind of sharing is usually fine with immutable objects, but with mutable types, it is highly error-prone.</p>",
           "polygon": [
             [
               128.6455078125,

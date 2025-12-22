@@ -157,7 +157,7 @@ User Prompt
             .replace("{{user_prompt}}", self.block_correction_prompt)
         )
         response = self.llm_service(prompt, image, page1, PageSchema)
-        logger.debug(f"Got reponse from LLM: {response}")
+        logger.debug(f"Got response from LLM: {response}")
 
         if not response or "correction_type" not in response:
             logger.warning("LLM did not return a valid response")

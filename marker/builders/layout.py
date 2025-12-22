@@ -33,7 +33,7 @@ class LayoutBuilder(BaseBuilder):
     ] = False
     expand_block_types: Annotated[
         List[BlockTypes],
-        "Block types whose bounds should be expanded to accomodate missing regions",
+        "Block types whose bounds should be expanded to accommodate missing regions",
     ] = [
         BlockTypes.Picture,
         BlockTypes.Figure,

@@ -27,7 +27,7 @@ class OpenAIService(BaseService):
     ] = None
     openai_image_format: Annotated[
         str,
-        "The image format to use for the OpenAI-like service. Use 'png' for better compatability",
+        "The image format to use for the OpenAI-like service. Use 'png' for better compatibility",
     ] = "webp"
 
     def process_images(self, images: List[Image.Image]) -> List[dict]:
@@ -37,7 +37,7 @@ class OpenAIService(BaseService):
 
         Args:
             images: Image or list of PIL images to include
-            format: Format to use for the image; use "png" for better compatability.
+            format: Format to use for the image; use "png" for better compatibility.
 
         Returns:
             A list of OpenAI-compatbile multimodal messages containing the base64-encoded images.
