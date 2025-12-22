@@ -668,7 +668,7 @@ Learning to debug can be frustrating, but it is a valuable skill that is useful 
 - **executable:** Another name for object code that is ready to be executed.
 - **prompt:** Characters displayed by the interpreter to indicate that it is ready to take input from the user.
 - **script:** A program stored in a file (usually one that will be interpreted).
-- **interactive mode:** A way of using the Python interpreter by typing commands and expres sions at the prompt.
+- **interactive mode:** A way of using the Python interpreter by typing commands and expressions at the prompt.
 - **script mode:** A way of using the Python interpreter to read and execute statements in a script.
 - **program:** A set of instructions that specifies a computation.
 - **algorithm:** A general process for solving a category of problems.
