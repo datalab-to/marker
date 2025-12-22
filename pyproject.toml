@@ -76,3 +76,12 @@ marker_server = "marker.scripts.server:server_cli"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.codespell]
+# Ref: https://github.com/codespell-project/codespell#using-a-config-file
+skip = '.git*,*.lock'
+check-hidden = true
+# long "words" (encoding), **S**hortucts
+ignore-regex = '\S{40,}|(\*\*|<b>)[A-Z](\*\*|</b>)[a-z]+|\b(Nam|Tung)\b'
+# choices of abbreviated variables
+ignore-words-list = 'bu,pres,te'
