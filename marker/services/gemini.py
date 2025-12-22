@@ -110,7 +110,7 @@ class BaseGeminiService(BaseService):
                     logger.error(f"APIError: {e}")
                     break
             except json.JSONDecodeError as e:
-                temperature = 0.2  # Increase temperature slightly to try and get a different respons
+                temperature = 0.2  # Increase temperature slightly to try and get a different response
 
                 # The response was not valid JSON
                 if tries == total_tries:
