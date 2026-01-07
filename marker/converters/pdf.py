@@ -71,7 +71,7 @@ class PdfConverter(BaseConverter):
         bool,
         "Enable higher quality processing with LLMs.",
     ] = False
-    default_processors: Tuple[BaseProcessor, ...] = (
+    default_processors: Tuple[Type[BaseProcessor], ...] = (
         OrderProcessor,
         BlockRelabelProcessor,
         LineMergeProcessor,
