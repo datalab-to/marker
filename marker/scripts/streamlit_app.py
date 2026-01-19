@@ -68,7 +68,7 @@ st.markdown("""
 
 This app will let you try marker, a PDF or image -> Markdown, HTML, JSON converter. It works with any language, and extracts images, tables, equations, etc.
 
-Find the project [here](https://github.com/VikParuchuri/marker).
+Find the project [here](https://github.com/datalab-to/marker).
 """)
 
 in_file: UploadedFile = st.sidebar.file_uploader(
