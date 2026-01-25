@@ -12,6 +12,26 @@ from marker.services import BaseService
 logger = get_logger()
 
 
+def flatten_schema(schema):
+    if not isinstance(schema, dict):
+        return schema
+
+    defs = schema.pop("$defs", {})
+
+    def resolve_refs(obj):
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref_name = obj["$ref"].split("/")[-1]
+                return resolve_refs(defs.get(ref_name, {}))
+            else:
+                return {k: resolve_refs(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [resolve_refs(item) for item in obj]
+        return obj
+
+    return resolve_refs(schema)
+
+
 class OllamaService(BaseService):
     ollama_base_url: Annotated[
         str, "The base url to use for ollama.  No trailing slash."
@@ -37,6 +57,7 @@ class OllamaService(BaseService):
         headers = {"Content-Type": "application/json"}
 
         schema = response_schema.model_json_schema()
+        schema = flatten_schema(schema)
         format_schema = {
             "type": "object",
             "properties": schema["properties"],
