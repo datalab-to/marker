@@ -34,7 +34,7 @@ click = "^8.2.0"
 markdown2 = "^2.5.2"
 filetype = "^1.2.0"
 google-genai = "^1.0.0"
-anthropic = "^0.46.0"
+anthropic = ">=0.46.0"
 pre-commit = "^4.2.0"
 scikit-learn = "^1.6.1"
 
@@ -44,7 +44,7 @@ openpyxl = {version = "^3.1.5", optional = true}
 python-pptx = {version = "^1.0.2", optional = true}
 ebooklib = {version = "^0.18", optional = true}
 weasyprint = {version = "^63.1", optional = true}
-openai = "^1.65.2"
+openai = ">=1.65.2"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.0.0"
