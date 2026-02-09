@@ -81,6 +81,32 @@ class CommonParams(BaseModel):
             description="The format to output the text in.  Can be 'markdown', 'json', or 'html'.  Defaults to 'markdown'."
         ),
     ] = "markdown"
+    # LLM configuration options (Issue #714)
+    use_llm: Annotated[
+        bool,
+        Field(
+            description="Enable LLM-based processing for improved structure detection."
+        ),
+    ] = False
+    llm_service: Annotated[
+        Optional[str],
+        Field(
+            description="LLM service to use. Examples: marker.services.gemini.GoogleGeminiService, "
+            "marker.services.openai.OpenAIService, marker.services.groq.GroqService"
+        ),
+    ] = None
+    gemini_api_key: Annotated[
+        Optional[str],
+        Field(description="API key for Google Gemini service."),
+    ] = None
+    openai_api_key: Annotated[
+        Optional[str],
+        Field(description="API key for OpenAI service."),
+    ] = None
+    groq_api_key: Annotated[
+        Optional[str],
+        Field(description="API key for Groq service."),
+    ] = None
 
 
 async def _convert_pdf(params: CommonParams):
@@ -138,6 +164,11 @@ async def convert_pdf_upload(
     force_ocr: Optional[bool] = Form(default=False),
     paginate_output: Optional[bool] = Form(default=False),
     output_format: Optional[str] = Form(default="markdown"),
+    use_llm: Optional[bool] = Form(default=False),
+    llm_service: Optional[str] = Form(default=None),
+    gemini_api_key: Optional[str] = Form(default=None),
+    openai_api_key: Optional[str] = Form(default=None),
+    groq_api_key: Optional[str] = Form(default=None),
     file: UploadFile = File(
         ..., description="The PDF file to convert.", media_type="application/pdf"
     ),
@@ -153,6 +184,11 @@ async def convert_pdf_upload(
         force_ocr=force_ocr,
         paginate_output=paginate_output,
         output_format=output_format,
+        use_llm=use_llm,
+        llm_service=llm_service,
+        gemini_api_key=gemini_api_key,
+        openai_api_key=openai_api_key,
+        groq_api_key=groq_api_key,
     )
     results = await _convert_pdf(params)
     os.remove(upload_path)
