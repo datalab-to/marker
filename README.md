@@ -79,13 +79,13 @@ pip install marker-pdf[full]
 Alternatively, you can use [uvx](https://docs.astral.sh/uv/guides/tools/) for a fast CLI workflow without installing packages globally:
 
 ```shell
-uvx --from marker-pdf marker_single /path/to/file.pdf
+uvx --from marker-pdf marker_single /path/to/file.pdf --output_dir .
 ```
 
 For the full installation with additional document format support:
 
 ```shell
-uvx --from "marker-pdf[full]" marker_single /path/to/file.pdf
+uvx --from "marker-pdf[full]" marker_single /path/to/file.pdf --output_dir .
 ```
 
 # Usage
