@@ -66,6 +66,8 @@ class OllamaService(BaseService):
                 block.update_metadata(llm_request_count=1, llm_tokens_used=total_tokens)
 
             data = response_data["response"]
+            if not data and "thinking" in response_data:
+                data = response_data["thinking"]
             return json.loads(data)
         except Exception as e:
             logger.warning(f"Ollama inference failed: {e}")
