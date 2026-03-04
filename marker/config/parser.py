@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Dict, List
 
 import click
 
@@ -32,9 +32,9 @@ class ConfigParser:
         fn = click.option("--debug", "-d", is_flag=True, help="Enable debug mode.")(fn)
         fn = click.option(
             "--output_format",
-            type=click.Choice(["markdown", "json", "html", "chunks"]),
+            type=str,
             default="markdown",
-            help="Format to output results in.",
+            help="Comma-separated list of format(s) to output results in (json,markdown,html)",
         )(fn)
         fn = click.option(
             "--processors",
@@ -124,19 +124,31 @@ class ConfigParser:
             service_cls = "marker.services.gemini.GoogleGeminiService"
         return service_cls
 
-    def get_renderer(self):
-        match self.cli_options["output_format"]:
+    def _format_to_renderer_cls(self, fmt: str):
+        """Convert format string to renderer class."""
+        match fmt.strip():
             case "json":
-                r = JSONRenderer
+                return JSONRenderer
             case "markdown":
-                r = MarkdownRenderer
+                return MarkdownRenderer
             case "html":
-                r = HTMLRenderer
+                return HTMLRenderer
             case "chunks":
-                r = ChunkRenderer
+                return ChunkRenderer
             case _:
-                raise ValueError("Invalid output format")
-        return classes_to_strings([r])[0]
+                raise ValueError(f"Invalid output format: {fmt}")
+
+    def get_renderer(self):
+        """Get the primary renderer (first in list) as a string. Ensures backward compatibility."""
+        formats = self.cli_options["output_format"].split(",")
+        first_renderer = self._format_to_renderer_cls(formats[0])
+        return classes_to_strings([first_renderer])[0]
+
+    def get_renderers(self) -> List[str]:
+        """Get all requested renderers as a list of class strings."""
+        formats = self.cli_options["output_format"].split(",")
+        renderers = [self._format_to_renderer_cls(fmt) for fmt in formats]
+        return classes_to_strings(renderers)
 
     def get_processors(self):
         processors = self.cli_options.get("processors", None)

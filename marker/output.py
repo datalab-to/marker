@@ -89,13 +89,21 @@ def save_output(rendered: BaseModel, output_dir: str, fname_base: str):
         encoding=settings.OUTPUT_ENCODING,
     ) as f:
         f.write(text)
-    with open(
-        os.path.join(output_dir, f"{fname_base}_meta.json"),
-        "w+",
-        encoding=settings.OUTPUT_ENCODING,
-    ) as f:
-        f.write(json.dumps(rendered.metadata, indent=2))
+    
+    # Save metadata only once
+    meta_path = os.path.join(output_dir, f"{fname_base}_meta.json")
+    if not os.path.exists(meta_path):
+        with open(
+            meta_path,
+            "w+",
+            encoding=settings.OUTPUT_ENCODING,
+        ) as f:
+            f.write(json.dumps(rendered.metadata, indent=2))
 
     for img_name, img in images.items():
-        img = convert_if_not_rgb(img)  # RGBA images can't save as JPG
-        img.save(os.path.join(output_dir, img_name), settings.OUTPUT_IMAGE_FORMAT)
+        # Save image only if it doesn't already exist
+        img_path = os.path.join(output_dir, img_name)
+        if not os.path.exists(img_path):
+            img = convert_if_not_rgb(img)  # RGBA images can't save as JPG
+            img.save(img_path, settings.OUTPUT_IMAGE_FORMAT)
+
