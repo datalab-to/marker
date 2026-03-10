@@ -25,7 +25,7 @@ See [below](#benchmarks) for detailed speed and accuracy benchmarks, and instruc
 
 ## Hybrid Mode
 
-For the highest accuracy, pass the `--use_llm` flag to use an LLM alongside marker.  This will do things like merge tables across pages, handle inline math, format tables properly, and extract values from forms.  It can use any gemini or ollama model.  By default, it uses `gemini-2.0-flash`.  See [below](#llm-services) for details.
+For the highest accuracy, pass the `--use_llm` flag to use an LLM alongside marker.  This will do things like merge tables across pages, handle inline math, format tables properly, and extract values from forms.  It can use any gemini or ollama model.  By default, it uses `gemini-3-flash-preview`.  See [below](#llm-services) for details.
 
 Here is a table benchmark comparing marker, gemini flash alone, and marker with use_llm:
 

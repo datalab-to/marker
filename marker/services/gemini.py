@@ -20,7 +20,7 @@ logger = get_logger()
 class BaseGeminiService(BaseService):
     gemini_model_name: Annotated[
         str, "The name of the Google model to use for the service."
-    ] = "gemini-2.0-flash"
+    ] = "gemini-3-flash-preview"
     thinking_budget: Annotated[
         int, "The thinking token budget to use for the service."
     ] = None
