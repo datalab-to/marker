@@ -73,7 +73,7 @@ pip install marker-pdf
 If you want to use marker on documents other than PDFs, you will need to install additional dependencies with:
 
 ```shell
-pip install marker-pdf[full]
+pip install "marker-pdf[full]"
 ```
 
 # Usage
