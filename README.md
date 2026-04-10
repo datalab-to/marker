@@ -76,6 +76,12 @@ If you want to use marker on documents other than PDFs, you will need to install
 pip install marker-pdf[full]
 ```
 
+If you want to install with `uv` as tool globally so you can run `marker` anywhere (use `--with <dependency` for additional missing dependencies):
+
+```shell
+uv tool install marker-pdf --with psutil
+```
+
 # Usage
 
 First, some configuration:
