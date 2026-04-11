@@ -22,7 +22,7 @@ class AvianService(BaseService):
         - deepseek-v3.2     (DeepSeek V3.2, 164K context)
         - kimi-k2.5         (Kimi K2.5, 128K context)
         - glm-5             (GLM-5, 128K context)
-        - minimax-m2.5      (MiniMax M2.5, 1M context)
+        - minimax-m2.5      (MiniMax M2.5, 200K context, 16K max output)
 
     Usage:
         --llm_service marker.services.avian.AvianService
