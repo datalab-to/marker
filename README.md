@@ -1,3 +1,23 @@
+<p align="center">
+  <img src="data/images/datalab-logo.png" alt="Datalab Logo" width="150"/>
+</p>
+<h1 align="center">Datalab</h1>
+<p align="center">
+  <strong>State of the Art models for Document Intelligence</strong>
+</p>
+<p align="center">
+  <a href="https://www.gnu.org/licenses/gpl-3.0.html"><img src="https://img.shields.io/badge/Code%20License-GPL--3.0-green.svg" alt="Code License"></a>
+  <a href="https://www.datalab.to/pricing"><img src="https://img.shields.io/badge/Model%20License-OpenRAIL--M-blue.svg" alt="Model License"></a>
+  <a href="https://discord.gg/KuZwXNGnfH"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+</p>
+<p align="center">
+  <a href="https://www.datalab.to"><img src="https://img.shields.io/badge/Homepage-datalab.to-blue" alt="Homepage"></a>
+  <a href="https://documentation.datalab.to"><img src="https://img.shields.io/badge/Docs-Read%20the%20docs-blue" alt="Docs"></a>
+  <a href="https://www.datalab.to/playground"><img src="https://img.shields.io/badge/Playground-Try%20it-orange" alt="Public Playground"></a>
+</p>
+
+<hr/>
+
 # Marker
 
 Marker converts documents to markdown, JSON, chunks, and HTML quickly and accurately.
@@ -11,7 +31,15 @@ Marker converts documents to markdown, JSON, chunks, and HTML quickly and accura
 - Optionally boost accuracy with LLMs (and your own prompt)
 - Works on GPU, CPU, or MPS
 
-For our managed API or on-prem document intelligence solution, check out [our platform here](https://datalab.to?utm_source=gh-marker).
+## Try Datalab's Managed Platform
+
+Our managed platform runs our latest open source model, [Chandra](https://github.com/datalab-to/chandra) — higher accuracy than Marker, with zero data retention by default, SOC 2 Type 2, and custom BAAs.
+
+If you have high volume workloads, we offer a batch processing service that has processed 200M+ pages per week — we manage the infrastructure so your workloads finish on time.
+
+Get started with **$5 in free credits** — [sign up](https://www.datalab.to/?utm_source=gh-marker) — takes under 30 seconds — or try our [public playground](https://www.datalab.to/playground?utm_source=gh-marker).
+
+Commercial self-hosting requires a license — see [Commercial usage](#commercial-usage). For on-prem licensing, [contact us](https://www.datalab.to/contact?utm_source=gh-marker-onprem).
 
 ## Performance
 
@@ -44,17 +72,6 @@ As you can see, the use_llm mode offers higher accuracy than marker or gemini al
 # Commercial usage
 
 Our model weights use a modified AI Pubs Open Rail-M license (free for research, personal use, and startups under $2M funding/revenue) and our code is GPL. For broader commercial licensing or to remove GPL requirements, visit our pricing page [here](https://www.datalab.to/pricing?utm_source=gh-marker).
-
-# Hosted API & On-prem
-
-There's a [hosted API](https://www.datalab.to?utm_source=gh-marker) and [painless on-prem solution](https://www.datalab.to/blog/self-serve-on-prem-licensing) for marker - it's free to sign up, and we'll throw in credits for you to test it out.
-
-The API:
-- Supports PDF, image, PPT, PPTX, DOC, DOCX, XLS, XLSX, HTML, EPUB files
-- Is 1/4th the price of leading cloud-based competitors
-- Fast - ~15s for a 250 page PDF
-- Supports LLM mode
-- High uptime (99.99%)
 
 # Community
 
