@@ -1,4 +1,5 @@
 from copy import deepcopy
+import re
 from typing import Annotated, List, Tuple
 
 import numpy as np
@@ -80,7 +81,15 @@ class LineBuilder(BaseBuilder):
         "Disable OCR for the document. This will only use the lines from the provider.",
     ] = False
     keep_chars: Annotated[bool, "Keep individual characters."] = False
-    detection_line_min_confidence: Annotated[float, "Minimum confidence for a detected line to be included"] = 0.8
+    detection_line_min_confidence: Annotated[
+        float, "Minimum confidence for a detected line to be included"
+    ] = 0.8
+    ocr_math_symbol_threshold: Annotated[
+        int, "Minimum number of unicode math symbols to consider OCRing the page"
+    ] = 1
+    ocr_supersub_threshold: Annotated[
+        int, "Minimum number of superscript/subscript symbols to consider OCRing the page"
+    ] = 3
 
     def __init__(
         self,
@@ -161,6 +170,7 @@ class LineBuilder(BaseBuilder):
                     self.check_line_overlaps(
                         document_page, provider_lines
                     ),  # Ensure provider lines don't overflow the page or intersect
+                    not self.has_math(document_page, provider_lines),
                 ]
             )
             if self.disable_ocr:
@@ -191,7 +201,9 @@ class LineBuilder(BaseBuilder):
             detection_boxes = []
             if detection_result:
                 detection_boxes = [
-                    PolygonBox(polygon=box.polygon) for box in detection_result.bboxes if box.confidence > self.detection_line_min_confidence
+                    PolygonBox(polygon=box.polygon)
+                    for box in detection_result.bboxes
+                    if box.confidence > self.detection_line_min_confidence
                 ]
 
             detection_boxes = sort_text_lines(detection_boxes)
@@ -325,6 +337,62 @@ class LineBuilder(BaseBuilder):
         if not text_okay and (total_blocks == 1 and large_text_blocks == 1):
             text_okay = True
         return text_okay
+
+    def has_math(
+        self, document_page: PageGroup, provider_lines: List[ProviderOutput]
+    ) -> bool:
+        """
+        Heuristic to detect math-heavy pages that might require OCR even if text extraction seems fine.
+        """
+
+        # If there are any equations detected, we likely have math
+        page_layout_blocks = document_page.structure_blocks(document_page)
+        if any(
+            [block.block_type == BlockTypes.Equation for block in page_layout_blocks]
+        ):
+            return True
+
+        page_text = "\n".join(
+            " ".join(s.text for s in line.spans) for line in provider_lines
+        )
+
+        # Unicode math symbols
+        math_symbols_pattern = re.compile(
+            "["
+            +
+            # Basic math ops
+            r"\+\-=\*/<>∑∏√∞≈≠≤≥"
+            +
+            # Arrows
+            r"←→↔⇐⇒⇔↑↓↦"
+            +
+            # Greek letters
+            r"αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"
+            +
+            # Set & logic symbols
+            r"∈∉⊂⊃⊆⊇∪∩∀∃∅∧∨¬⇒⇔∴∵"
+            +
+            # Fractions & misc math
+            r"¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞‰‱°′″‴‵‶‷"
+            +
+            # Integrals, sums, etc.
+            r"∫∬∭∮∯∰∱∲∳∂∇⊕⊗⊥∥∠∡⊾"
+            + "]"
+        )
+
+        # - Superscript: U+2070–U+209F (partial)
+        # - Subscript:   U+2080–U+209F
+        supersub_pattern = re.compile(r"[\u2070-\u209F]")
+
+        num_math_symbols = len(math_symbols_pattern.findall(page_text))
+        num_supersubs = len(supersub_pattern.findall(page_text))
+        if (
+            num_math_symbols > self.ocr_math_symbol_threshold
+            or num_supersubs > self.ocr_supersub_threshold
+        ):
+            return True
+
+        return False
 
     def filter_blank_lines(self, page: PageGroup, lines: List[ProviderOutput]):
         page_size = (page.polygon.width, page.polygon.height)

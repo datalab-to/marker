@@ -100,6 +100,7 @@ class Markdownify(MarkdownConverter):
 
     def convert_math(self, el, text, parent_tags):
         block = el.has_attr("display") and el["display"] == "block"
+        text = text.strip().replace("\n", " ")
         if block:
             return (
                 "\n"
