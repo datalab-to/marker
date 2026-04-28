@@ -1,3 +1,4 @@
+import json
 from typing import Annotated, List
 
 from surya.layout import LayoutPredictor
@@ -27,6 +28,10 @@ class LayoutBuilder(BaseBuilder):
         str,
         "Skip layout and force every page to be treated as a specific block type.",
     ] = None
+    force_layout_str: Annotated[
+        str,
+        "JSON string of layout for each page. Useful for using an altenative layout model.",
+    ] = None
     disable_tqdm: Annotated[
         bool,
         "Disable tqdm progress bars.",
@@ -49,7 +54,9 @@ class LayoutBuilder(BaseBuilder):
         super().__init__(config)
 
     def __call__(self, document: Document, provider: PdfProvider):
-        if self.force_layout_block is not None:
+        if self.force_layout_str is not None:
+            layout_results = self.forced_layout_from_str(document.pages)
+        elif self.force_layout_block is not None:
             # Assign the full content of every page to a single layout type
             layout_results = self.forced_layout(document.pages)
         else:
@@ -89,6 +96,29 @@ class LayoutBuilder(BaseBuilder):
             [p.get_image(highres=False) for p in pages],
             batch_size=int(self.get_batch_size()),
         )
+        return layout_results
+
+    def forced_layout_from_str(self, pages: List[PageGroup]) -> List[LayoutResult]:
+        layout_json = json.loads(self.force_layout_str)
+        assert len(layout_json) == len(pages)
+        layout_results = []
+        for page, forced_layout in zip(pages, layout_json):
+            for i, layout_block in enumerate(forced_layout):
+                layout_results.append(
+                    LayoutResult(
+                        image_bbox=page.polygon.bbox,
+                        bboxes=[
+                            LayoutBox(
+                                label=layout_block["label"],
+                                position=i,
+                                top_k={layout_block["label"]: 1},
+                                polygon=PolygonBox.from_bbox(layout_block["bbox"]).polygon,
+                            ),
+                        ],
+                        sliced=False,
+                    )
+            )
+
         return layout_results
 
     def expand_layout_blocks(self, document: Document):
