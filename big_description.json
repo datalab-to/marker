@@ -1,0 +1,13 @@
+{
+    "use_llm": true,
+    "llm_service": "gemini",
+    "gemini_api_key": "",
+    "gemini_model_name": "gemini-2.5-flash",
+    "output_format": "markdown",
+    "format_lines": true,
+    "max_retries": 5,
+    "retry_wait_time": 10,
+    "timeout": 120,
+    "debug": true,
+    "block_correction_prompt": "Fix table structure by identifying and consolidating rows that belong to the same line item. Look for rows that have empty quantity, rate, and amount columns but contain descriptive text - these are likely continuation rows that should be merged with the nearest row that has actual values. When merging, combine all related descriptive content in the description column using line breaks. CRITICAL: Be careful not to merge unrelated items that are outside the table - only merge rows that logically belong together as part of the same service or product description. Each final row should represent one billable line item with complete quantity, rate, and amount information."
+  }
