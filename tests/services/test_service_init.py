@@ -1,12 +1,12 @@
 import pytest
 
 from marker.converters.pdf import PdfConverter
+from marker.services.avian import AvianService
+from marker.services.azure_openai import AzureOpenAIService
 from marker.services.gemini import GoogleGeminiService
 from marker.services.ollama import OllamaService
-from marker.services.vertex import GoogleVertexService
-from marker.services.avian import AvianService
 from marker.services.openai import OpenAIService
-from marker.services.azure_openai import AzureOpenAIService
+from marker.services.vertex import GoogleVertexService
 
 
 @pytest.mark.output_format("markdown")
