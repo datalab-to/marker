@@ -2,10 +2,8 @@ import json
 import time
 from typing import Annotated, List
 
-import openai
 import PIL
 from marker.logger import get_logger
-from openai import APITimeoutError, RateLimitError
 from PIL import Image
 from pydantic import BaseModel
 
@@ -13,6 +11,17 @@ from marker.schema.blocks import Block
 from marker.services import BaseService
 
 logger = get_logger()
+
+
+def _import_openai():
+    try:
+        import openai
+        return openai
+    except ImportError:
+        raise ImportError(
+            "The 'openai' package is required to use AvianService. "
+            "Install it with: pip install openai"
+        )
 
 
 class AvianService(BaseService):
@@ -89,6 +98,8 @@ class AvianService(BaseService):
             }
         ]
 
+        openai = _import_openai()
+
         total_tries = max_retries + 1
         for tries in range(1, total_tries + 1):
             try:
@@ -109,7 +120,7 @@ class AvianService(BaseService):
                         llm_tokens_used=total_tokens, llm_request_count=1
                     )
                 return json.loads(response_text)
-            except (APITimeoutError, RateLimitError) as e:
+            except (openai.APITimeoutError, openai.RateLimitError) as e:
                 if tries == total_tries:
                     logger.error(
                         f"Rate limit error: {e}. Max retries reached. Giving up. (Attempt {tries}/{total_tries})",
@@ -127,7 +138,8 @@ class AvianService(BaseService):
 
         return {}
 
-    def get_client(self) -> openai.OpenAI:
+    def get_client(self):
+        openai = _import_openai()
         return openai.OpenAI(
             api_key=self.avian_api_key,
             base_url="https://api.avian.io/v1",

@@ -184,3 +184,25 @@ def test_call_with_image(avian_service):
 def test_missing_api_key_raises():
     with pytest.raises(AssertionError):
         AvianService(config={})
+
+
+def test_conditional_import_error():
+    """Verify helpful error when openai is not installed."""
+    import importlib
+    import sys
+
+    import marker.services.avian as avian_mod
+
+    # Temporarily hide the openai module
+    real_openai = sys.modules.get("openai")
+    sys.modules["openai"] = None
+    try:
+        importlib.reload(avian_mod)
+        with pytest.raises(ImportError, match="openai"):
+            avian_mod._import_openai()
+    finally:
+        if real_openai is not None:
+            sys.modules["openai"] = real_openai
+        else:
+            sys.modules.pop("openai", None)
+        importlib.reload(avian_mod)
