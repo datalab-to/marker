@@ -229,6 +229,15 @@ class Markdownify(MarkdownConverter):
         else:
             return text
 
+    def convert_aside(self, el, text, parent_tags):
+        classes = el.get("class") or []
+        if "image-long-description" in classes:
+            # Emit as an HTML comment so it's invisible to human readers but
+            # still visible to any LLM ingesting the raw markdown.
+            comment_body = text.strip().replace("--", "—")
+            return f"\n\n<!-- image-long-description: {comment_body} -->\n\n"
+        return text
+
     def escape(self, text, parent_tags=None):
         text = super().escape(text, parent_tags)
         if self.options["escape_dollars"]:

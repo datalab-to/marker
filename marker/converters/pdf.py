@@ -32,6 +32,7 @@ from marker.processors.list import ListProcessor
 from marker.processors.llm.llm_complex import LLMComplexRegionProcessor
 from marker.processors.llm.llm_form import LLMFormProcessor
 from marker.processors.llm.llm_image_description import LLMImageDescriptionProcessor
+from marker.processors.llm.llm_image_context import LLMImageContextDescriptionProcessor
 from marker.processors.llm.llm_table import LLMTableProcessor
 from marker.processors.page_header import PageHeaderProcessor
 from marker.processors.reference import ReferenceProcessor
@@ -92,6 +93,7 @@ class PdfConverter(BaseConverter):
         TextProcessor,
         LLMComplexRegionProcessor,
         LLMImageDescriptionProcessor,
+        LLMImageContextDescriptionProcessor,
         LLMEquationProcessor,
         LLMHandwritingProcessor,
         LLMMathBlockProcessor,
@@ -135,7 +137,7 @@ class PdfConverter(BaseConverter):
         if llm_service:
             llm_service_cls = strings_to_classes([llm_service])[0]
             llm_service = self.resolve_dependencies(llm_service_cls)
-        elif config.get("use_llm", False):
+        elif config.get("use_llm", False) or config.get("llm_image_context", False):
             llm_service = self.resolve_dependencies(self.default_llm_service)
 
         # Inject llm service into artifact_dict so it can be picked up by processors, etc.

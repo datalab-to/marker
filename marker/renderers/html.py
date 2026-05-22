@@ -96,17 +96,29 @@ class HTMLRenderer(BaseRenderer):
                     break
 
             if ref_block_id.block_type in self.image_blocks:
+                block = document.get_block(ref_block_id)
+                short_caption = getattr(block, "short_caption", None) or ""
+                long_description = getattr(block, "long_description", None)
+                # Escape quotes for safe attribute embedding
+                alt_attr = short_caption.replace("'", "&#39;").replace("\n", " ")
                 if self.extract_images:
                     image = self.extract_image(document, ref_block_id)
                     image_name = f"{ref_block_id.to_path()}.{settings.OUTPUT_IMAGE_FORMAT.lower()}"
                     images[image_name] = image
+                    img_html = f"<img src='{image_name}' alt='{alt_attr}'>"
+                    if long_description:
+                        img_html += f"<aside class='image-long-description'>{long_description}</aside>"
                     element = BeautifulSoup(
-                        f"<p>{content}<img src='{image_name}'></p>", "html.parser"
+                        f"<p>{content}{img_html}</p>", "html.parser"
                     )
                     ref.replace_with(self.insert_block_id(element, ref_block_id))
                 else:
-                    # This will be the image description if using llm mode, or empty if not
-                    element = BeautifulSoup(f"{content}", "html.parser")
+                    # No image file; emit the long description (if any) as a hidden aside
+                    # so text-only consumers still get the LLM-generated context.
+                    extra = ""
+                    if long_description:
+                        extra = f"<aside class='image-long-description'>{long_description}</aside>"
+                    element = BeautifulSoup(f"{content}{extra}", "html.parser")
                     ref.replace_with(self.insert_block_id(element, ref_block_id))
             elif ref_block_id.block_type in self.page_blocks:
                 images.update(sub_images)
