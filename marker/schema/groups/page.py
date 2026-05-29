@@ -1,4 +1,5 @@
 from collections import defaultdict
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 
@@ -57,6 +58,15 @@ class PageGroup(Group):
     ):
         image = self.highres_image if highres else self.lowres_image
 
+        # Auto-decompress if stored as bytes (memory-saving mode)
+        if isinstance(image, bytes):
+            image = Image.open(BytesIO(image))
+            # Cache the decompressed image back on the page
+            if highres:
+                self.highres_image = image
+            else:
+                self.lowres_image = image
+
         # Check if RGB, convert if needed
         if isinstance(image, Image.Image) and image.mode != "RGB":
             image = image.convert("RGB")
@@ -76,6 +86,45 @@ class PageGroup(Group):
                 draw.polygon(poly, fill="white")
 
         return image
+
+    def compress_images(self, quality: int = 85, fmt: str = "JPEG") -> None:
+        """Convert PIL Image objects to compressed bytes, freeing CPU memory.
+
+        After OCR is complete, images are only needed occasionally (table extraction,
+        equation detection, debug output).  Compressing them to JPEG bytes reduces
+        per-page memory from ~13 MB (raw pixels) to ~50-200 KB, a 100x savings.
+
+        ``get_image()`` auto-decompresses on next access — transparent to callers.
+        """
+        for attr in ("lowres_image", "highres_image"):
+            img = getattr(self, attr)
+            if isinstance(img, Image.Image):
+                buf = BytesIO()
+                save_kwargs = {"format": fmt, "quality": quality}
+                if fmt == "JPEG" and img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                img.save(buf, **save_kwargs)
+                setattr(self, attr, buf.getvalue())
+
+    def clear_images(self) -> None:
+        """Release all image data from memory.
+
+        Call after all processing stages that need images are complete.
+        """
+        self.lowres_image = None
+        self.highres_image = None
+
+    def images_size_bytes(self) -> int:
+        """Return total bytes used by stored images (useful for diagnostics)."""
+        total = 0
+        for attr in ("lowres_image", "highres_image"):
+            img = getattr(self, attr)
+            if isinstance(img, bytes):
+                total += len(img)
+            elif isinstance(img, Image.Image):
+                # Rough estimate: width * height * 3 channels
+                total += img.size[0] * img.size[1] * 3
+        return total
 
     @computed_field
     @property
