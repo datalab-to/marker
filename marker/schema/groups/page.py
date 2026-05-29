@@ -61,11 +61,8 @@ class PageGroup(Group):
         # Auto-decompress if stored as bytes (memory-saving mode)
         if isinstance(image, bytes):
             image = Image.open(BytesIO(image))
-            # Cache the decompressed image back on the page
-            if highres:
-                self.highres_image = image
-            else:
-                self.lowres_image = image
+            # Do NOT cache — let downstream processors re-decompress on demand.
+            # This keeps peak memory at O(batch_size) instead of O(total_pages).
 
         # Check if RGB, convert if needed
         if isinstance(image, Image.Image) and image.mode != "RGB":

@@ -31,19 +31,40 @@ class DocumentBuilder(BaseBuilder):
         int,
         "Number of pages to process at once. 0 = all pages (default, fastest but most memory). "
         ">0 = process in batches, compressing images after each batch to dramatically reduce "
-        "RAM usage on large documents (97-page doc: ~13 GB → ~200 MB).",
+        "RAM usage on large documents (97-page doc: ~13 GB -> ~200 MB).",
     ] = 0
 
     def __call__(self, provider: PdfProvider, layout_builder: LayoutBuilder, line_builder: LineBuilder, ocr_builder: OcrBuilder):
-        document = self.build_document(provider)
-        batch_size = self.page_batch_size if self.page_batch_size > 0 else len(document.pages)
+        if self.page_batch_size > 0:
+            return self._build_streaming(provider, layout_builder, line_builder, ocr_builder)
+        else:
+            return self._build_all_at_once(provider, layout_builder, line_builder, ocr_builder)
+
+    def _build_all_at_once(self, provider, layout_builder, line_builder, ocr_builder):
+        """Original behavior: load all images, process all pages."""
+        document = self._create_document_structure(provider, load_images=True)
+        layout_builder(document, provider)
+        line_builder(document, provider)
+        if not self.disable_ocr:
+            ocr_builder(document, provider)
+        return document
+
+    def _build_streaming(self, provider, layout_builder, line_builder, ocr_builder):
+        """Batch mode: create pages without images, load and process in batches."""
+        document = self._create_document_structure(provider, load_images=False)
+        batch_size = self.page_batch_size
 
         for start in range(0, len(document.pages), batch_size):
             end = min(start + batch_size, len(document.pages))
             batch = document.pages[start:end]
 
             # Load images for this batch only
-            self._load_images(provider, batch)
+            ids = [p.page_id for p in batch]
+            lowres = provider.get_images(ids, self.lowres_image_dpi)
+            highres = provider.get_images(ids, self.highres_image_dpi)
+            for i, page in enumerate(batch):
+                page.lowres_image = lowres[i]
+                page.highres_image = highres[i]
 
             # Builders iterate document.pages — temporarily scope to the batch
             original_pages = document.pages
@@ -62,10 +83,17 @@ class DocumentBuilder(BaseBuilder):
 
         return document
 
-    def build_document(self, provider: PdfProvider):
+    def _create_document_structure(self, provider: PdfProvider, load_images: bool):
+        """Create Document with page structure. If load_images=False, pages start with no images."""
         PageGroupClass: PageGroup = get_block_class(BlockTypes.Page)
-        lowres_images = provider.get_images(provider.page_range, self.lowres_image_dpi)
-        highres_images = provider.get_images(provider.page_range, self.highres_image_dpi)
+
+        if load_images:
+            lowres_images = provider.get_images(provider.page_range, self.lowres_image_dpi)
+            highres_images = provider.get_images(provider.page_range, self.highres_image_dpi)
+        else:
+            lowres_images = [None] * len(provider.page_range)
+            highres_images = [None] * len(provider.page_range)
+
         initial_pages = [
             PageGroupClass(
                 page_id=p,
@@ -77,12 +105,3 @@ class DocumentBuilder(BaseBuilder):
         ]
         DocumentClass: Document = get_block_class(BlockTypes.Document)
         return DocumentClass(filepath=provider.filepath, pages=initial_pages)
-
-    def _load_images(self, provider: PdfProvider, pages: list):
-        """Load low-res and high-res images for the given pages."""
-        ids = [p.page_id for p in pages]
-        lowres = provider.get_images(ids, self.lowres_image_dpi)
-        highres = provider.get_images(ids, self.highres_image_dpi)
-        for i, page in enumerate(pages):
-            page.lowres_image = lowres[i]
-            page.highres_image = highres[i]
