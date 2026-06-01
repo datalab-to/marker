@@ -14,6 +14,7 @@ os.environ["IN_STREAMLIT"] = "true"
 from marker.settings import settings
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
+import json
 import re
 import tempfile
 from typing import Any, Dict
@@ -57,16 +58,115 @@ def markdown_insert_images(markdown, images):
     return markdown
 
 
-st.set_page_config(layout="wide")
-col1, col2 = st.columns([0.5, 0.5])
+st.set_page_config(layout="wide", page_title="Marker — Document Converter", page_icon="📄")
 
+# --- Loading Screen ---
+loading_css = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+.loading-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    font-family: 'Inter', sans-serif;
+}
+.loading-logo {
+    font-size: 4rem;
+    animation: pulse-glow 2s ease-in-out infinite;
+    margin-bottom: 1.5rem;
+}
+@keyframes pulse-glow {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.5)); }
+    50% { transform: scale(1.15); filter: drop-shadow(0 0 24px rgba(139, 92, 246, 0.9)); }
+}
+.loading-title {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #a78bfa, #818cf8, #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+}
+.loading-subtitle {
+    font-size: 1rem;
+    color: #94a3b8;
+    font-weight: 300;
+    margin-bottom: 2.5rem;
+    letter-spacing: 0.05em;
+}
+.loading-bar-track {
+    width: 280px;
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 1.2rem;
+}
+.loading-bar-fill {
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(90deg, #a78bfa, #818cf8);
+    border-radius: 4px;
+    animation: slide 1.8s ease-in-out infinite;
+}
+@keyframes slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+.loading-status {
+    font-size: 0.85rem;
+    color: #64748b;
+    font-weight: 400;
+    letter-spacing: 0.03em;
+}
+.loading-dots::after {
+    content: '';
+    animation: dots 1.5s steps(4, end) infinite;
+}
+@keyframes dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+}
+</style>
+"""
+
+loading_html = """
+<div class="loading-overlay" id="marker-loading-screen">
+    <div class="loading-logo">📄</div>
+    <div class="loading-title">Marker</div>
+    <div class="loading-subtitle">Document → Markdown Converter</div>
+    <div class="loading-bar-track">
+        <div class="loading-bar-fill"></div>
+    </div>
+    <div class="loading-status">Loading AI models<span class="loading-dots"></span></div>
+</div>
+"""
+
+loading_placeholder = st.empty()
+loading_placeholder.markdown(loading_css + loading_html, unsafe_allow_html=True)
+
+# Load models (this is the slow part — cached after first run)
 model_dict = load_models()
 cli_options = parse_args()
 
-st.markdown("""
-# Marker Demo
+# Clear the loading screen
+loading_placeholder.empty()
 
-This app will let you try marker, a PDF or image -> Markdown, HTML, JSON converter. It works with any language, and extracts images, tables, equations, etc.
+# --- Main App UI ---
+col1, col2 = st.columns([0.5, 0.5])
+
+st.markdown("""
+# 📄 Marker Demo
+
+This app will let you try marker, a PDF or image → Markdown, HTML, JSON converter. It works with any language, and extracts images, tables, equations, etc.
 
 Find the project [here](https://github.com/VikParuchuri/marker).
 """)
@@ -118,27 +218,34 @@ if not run_marker:
     st.stop()
 
 # Run Marker
-with tempfile.TemporaryDirectory() as tmp_dir:
-    temp_pdf = os.path.join(tmp_dir, "temp.pdf")
-    with open(temp_pdf, "wb") as f:
-        f.write(in_file.getvalue())
+with st.status("Running Marker...", expanded=True) as status:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        temp_pdf = os.path.join(tmp_dir, "temp.pdf")
+        st.write("⏳ Preparing document...")
+        with open(temp_pdf, "wb") as f:
+            f.write(in_file.getvalue())
 
-    cli_options.update(
-        {
-            "output_format": output_format,
-            "page_range": page_range,
-            "force_ocr": force_ocr,
-            "debug": debug,
-            "output_dir": settings.DEBUG_DATA_FOLDER if debug else None,
-            "use_llm": use_llm,
-            "strip_existing_ocr": strip_existing_ocr,
-            "disable_ocr_math": disable_ocr_math,
-        }
-    )
-    config_parser = ConfigParser(cli_options)
-    rendered = convert_pdf(temp_pdf, config_parser)
-    page_range = config_parser.generate_config_dict()["page_range"]
-    first_page = page_range[0] if page_range else 0
+        cli_options.update(
+            {
+                "output_format": output_format,
+                "page_range": page_range,
+                "force_ocr": force_ocr,
+                "debug": debug,
+                "output_dir": settings.DEBUG_DATA_FOLDER if debug else None,
+                "use_llm": use_llm,
+                "strip_existing_ocr": strip_existing_ocr,
+                "disable_ocr_math": disable_ocr_math,
+            }
+        )
+        config_parser = ConfigParser(cli_options)
+
+        st.write("🔄 Running Marker conversion... This may take a moment.")
+        rendered = convert_pdf(temp_pdf, config_parser)
+        page_range = config_parser.generate_config_dict()["page_range"]
+        first_page = page_range[0] if page_range else 0
+
+        st.write("✅ Processing output...")
+    status.update(label="Conversion complete!", state="complete", expanded=False)
 
 text, ext, images = text_from_rendered(rendered)
 with col2:
@@ -151,6 +258,27 @@ with col2:
         st.html(text)
     elif output_format == "chunks":
         st.json(text)
+
+# Download button
+file_base = os.path.splitext(in_file.name)[0]
+ext_map = {"markdown": ".md", "json": ".json", "html": ".html", "chunks": ".json"}
+mime_map = {
+    "markdown": "text/markdown",
+    "json": "application/json",
+    "html": "text/html",
+    "chunks": "application/json",
+}
+download_ext = ext_map[output_format]
+download_mime = mime_map[output_format]
+download_data = json.dumps(text, indent=2) if output_format in ("json", "chunks") else text
+
+with col2:
+    st.download_button(
+        label=f"⬇️ Download {output_format.title()} file",
+        data=download_data,
+        file_name=f"{file_base}{download_ext}",
+        mime=download_mime,
+    )
 
 if debug:
     with col1:
