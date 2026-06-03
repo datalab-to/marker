@@ -1,3 +1,8 @@
+> **margati fork notice** — this fork modifies marker's list detection to
+> be prefix-free (no reliance on `1.`, `a.`, `•`, etc.). See
+> [PATCHES.md](./PATCHES.md) for the full list of changes (structure
+> builder, two new processors, surya label patch, viewer script).
+
 <p align="center">
   <img src="data/images/datalab-logo.png" alt="Datalab Logo" width="150"/>
 </p>
