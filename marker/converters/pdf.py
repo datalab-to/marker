@@ -50,6 +50,8 @@ from marker.processors.llm.llm_handwriting import LLMHandwritingProcessor
 from marker.processors.order import OrderProcessor
 from marker.services.gemini import GoogleGeminiService
 from marker.processors.line_merge import LineMergeProcessor
+from marker.processors.list_line_explode import ListItemLineExplodeProcessor
+from marker.processors.list_gap_cluster import ListItemGapClusterProcessor  # noqa: F401  # alternate strategy
 from marker.processors.llm.llm_mathblock import LLMMathBlockProcessor
 from marker.processors.llm.llm_page_correction import LLMPageCorrectionProcessor
 from marker.processors.llm.llm_sectionheader import LLMSectionHeaderProcessor
@@ -75,6 +77,7 @@ class PdfConverter(BaseConverter):
         OrderProcessor,
         BlockRelabelProcessor,
         LineMergeProcessor,
+        ListItemLineExplodeProcessor,  # swap to ListItemGapClusterProcessor for gap-clustered itemization
         BlockquoteProcessor,
         CodeProcessor,
         DocumentTOCProcessor,

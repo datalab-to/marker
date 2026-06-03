@@ -28,8 +28,8 @@ class StructureBuilder(BaseBuilder):
     def __call__(self, document: Document):
         for page in document.pages:
             self.group_caption_blocks(page)
-            self.group_lists(page)
-            self.unmark_lists(page)
+            # self.group_lists(page)   # keep each ListItem standalone (no merging into ListGroup)
+            # self.unmark_lists(page)  # don't demote lone ListItems to Text
 
     def group_caption_blocks(self, page: PageGroup):
         gap_threshold_px = self.gap_threshold * page.polygon.height
