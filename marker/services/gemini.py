@@ -30,6 +30,31 @@ class BaseGeminiService(BaseService):
         img.save(image_bytes, format="WEBP")
         return image_bytes.getvalue()
 
+    @staticmethod
+    def _get_retry_delay(error: APIError) -> float | None:
+        details = getattr(error, "details", None)
+        if not isinstance(details, dict):
+            return None
+        # Response may nest under 'error' key or be flat
+        error_details = (
+            details.get("error", {}).get("details")
+            or details.get("details")
+        )
+        if not isinstance(error_details, list):
+            return None
+        for entry in error_details:
+            if not isinstance(entry, dict):
+                continue
+            if not entry.get("@type", "").endswith("RetryInfo"):
+                continue
+            delay_str = entry.get("retryDelay", "")
+            if isinstance(delay_str, str) and delay_str.endswith("s"):
+                try:
+                    return float(delay_str[:-1])
+                except ValueError:
+                    continue
+        return None
+
     def get_google_client(self, timeout: int):
         raise NotImplementedError
 
@@ -101,7 +126,7 @@ class BaseGeminiService(BaseService):
                         )
                         break
                     else:
-                        wait_time = tries * self.retry_wait_time
+                        wait_time = self._get_retry_delay(e) or tries * self.retry_wait_time
                         logger.warning(
                             f"APIError: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
                         )
