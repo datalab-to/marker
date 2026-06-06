@@ -188,6 +188,17 @@ class PdfConverter(BaseConverter):
         for processor in self.processor_list:
             processor(document)
 
+        # Free high-res page images after all processors complete — no longer needed
+        # Keeping them causes unbounded memory growth when reusing PdfConverter
+        # across multiple PDFs (see: https://github.com/datalab-to/marker/issues/1040)
+        for page in document.pages:
+            page.highres_image = None
+
+        # Reset surya model KV caches between documents to prevent memory growth
+        for model in self.artifact_dict.values():
+            if hasattr(model, "foundation_predictor") and hasattr(model.foundation_predictor, "kv_cache"):
+                model.foundation_predictor.kv_cache = None
+
         return document
 
     def __call__(self, filepath: str | io.BytesIO):
