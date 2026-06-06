@@ -59,7 +59,7 @@ def ocr_error_model(model_dict):
 @pytest.fixture(scope="function")
 def config(request):
     config_mark = request.node.get_closest_marker("config")
-    config = config_mark.args[0] if config_mark else {}
+    config = config_mark.args[0] if config_mark and config_mark.args else {}
 
     override_map: Dict[BlockTypes, Type[Block]] = config.get("override_map", {})
     for block_type, override_block_type in override_map.items():
