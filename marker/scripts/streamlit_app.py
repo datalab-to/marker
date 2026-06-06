@@ -60,104 +60,147 @@ def markdown_insert_images(markdown, images):
 
 st.set_page_config(layout="wide", page_title="Marker — Document Converter", page_icon="📄")
 
-# --- Loading Screen ---
-loading_css = """
+# --- Full-page Loading Screen ---
+# Hide ALL Streamlit UI elements while loading, and show an animated overlay
+_LOADING_SCREEN = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-.loading-overlay {
+/* Hide Streamlit chrome while loading */
+.marker-is-loading header[data-testid="stHeader"],
+.marker-is-loading section[data-testid="stSidebar"],
+.marker-is-loading .stMainBlockContainer {
+    visibility: hidden !important;
+}
+
+/* Full-page overlay */
+.marker-loading-overlay {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 99999;
+    inset: 0;
+    z-index: 1000000;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
     font-family: 'Inter', sans-serif;
+    transition: opacity 0.6s ease-out;
 }
-.loading-logo {
-    font-size: 4rem;
-    animation: pulse-glow 2s ease-in-out infinite;
+.marker-loading-overlay.fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Animated logo */
+.marker-load-icon {
+    font-size: 4.5rem;
     margin-bottom: 1.5rem;
+    animation: marker-pulse 2s ease-in-out infinite;
 }
-@keyframes pulse-glow {
-    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.5)); }
-    50% { transform: scale(1.15); filter: drop-shadow(0 0 24px rgba(139, 92, 246, 0.9)); }
+@keyframes marker-pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(139,92,246,0.4)); }
+    50%      { transform: scale(1.12); filter: drop-shadow(0 0 28px rgba(139,92,246,0.85)); }
 }
-.loading-title {
-    font-size: 2rem;
+
+/* Title with gradient text */
+.marker-load-title {
+    font-size: 2.2rem;
     font-weight: 700;
     background: linear-gradient(90deg, #a78bfa, #818cf8, #c084fc);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
 }
-.loading-subtitle {
+.marker-load-subtitle {
     font-size: 1rem;
     color: #94a3b8;
     font-weight: 300;
+    letter-spacing: 0.06em;
     margin-bottom: 2.5rem;
-    letter-spacing: 0.05em;
 }
-.loading-bar-track {
-    width: 280px;
+
+/* Indeterminate progress bar */
+.marker-load-track {
+    width: 300px;
     height: 4px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.07);
     border-radius: 4px;
     overflow: hidden;
-    margin-bottom: 1.2rem;
+    margin-bottom: 1.4rem;
 }
-.loading-bar-fill {
-    width: 40%;
+.marker-load-bar {
+    width: 38%;
     height: 100%;
     background: linear-gradient(90deg, #a78bfa, #818cf8);
     border-radius: 4px;
-    animation: slide 1.8s ease-in-out infinite;
+    animation: marker-slide 1.6s ease-in-out infinite;
 }
-@keyframes slide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(350%); }
+@keyframes marker-slide {
+    0%   { transform: translateX(-110%); }
+    100% { transform: translateX(330%); }
 }
-.loading-status {
-    font-size: 0.85rem;
+
+/* Status text with animated dots */
+.marker-load-status {
+    font-size: 0.88rem;
     color: #64748b;
     font-weight: 400;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
 }
-.loading-dots::after {
+.marker-load-dots::after {
     content: '';
-    animation: dots 1.5s steps(4, end) infinite;
+    animation: marker-dots 1.5s steps(4, end) infinite;
 }
-@keyframes dots {
-    0% { content: ''; }
+@keyframes marker-dots {
+    0%  { content: ''; }
     25% { content: '.'; }
     50% { content: '..'; }
     75% { content: '...'; }
 }
 </style>
-"""
 
-loading_html = """
-<div class="loading-overlay" id="marker-loading-screen">
-    <div class="loading-logo">📄</div>
-    <div class="loading-title">Marker</div>
-    <div class="loading-subtitle">Document → Markdown Converter</div>
-    <div class="loading-bar-track">
-        <div class="loading-bar-fill"></div>
+<script>
+// Tag <html> so CSS above can hide Streamlit chrome
+document.documentElement.classList.add('marker-is-loading');
+</script>
+
+<div class="marker-loading-overlay" id="markerLoadingScreen">
+    <div class="marker-load-icon">📄</div>
+    <div class="marker-load-title">Marker</div>
+    <div class="marker-load-subtitle">Document → Markdown Converter</div>
+    <div class="marker-load-track">
+        <div class="marker-load-bar"></div>
     </div>
-    <div class="loading-status">Loading AI models<span class="loading-dots"></span></div>
+    <div class="marker-load-status">Loading AI models<span class="marker-load-dots"></span></div>
 </div>
 """
 
+_LOADING_DISMISS = """
+<script>
+(function() {
+    // Fade out the overlay
+    var el = document.getElementById('markerLoadingScreen');
+    if (el) {
+        el.classList.add('fade-out');
+        setTimeout(function(){ el.remove(); }, 650);
+    }
+    // Reveal Streamlit UI
+    document.documentElement.classList.remove('marker-is-loading');
+})();
+</script>
+"""
+
 loading_placeholder = st.empty()
-loading_placeholder.markdown(loading_css + loading_html, unsafe_allow_html=True)
+loading_placeholder.html(_LOADING_SCREEN)
 
 # Load models (this is the slow part — cached after first run)
 model_dict = load_models()
 cli_options = parse_args()
 
-# Clear the loading screen
+# Dismiss loading screen with fade-out, then clear placeholder
+loading_placeholder.html(_LOADING_DISMISS)
+import time as _time; _time.sleep(0.7)
 loading_placeholder.empty()
 
 # --- Main App UI ---
