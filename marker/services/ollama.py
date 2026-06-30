@@ -19,6 +19,9 @@ class OllamaService(BaseService):
     ollama_model: Annotated[str, "The model name to use for ollama."] = (
         "llama3.2-vision"
     )
+    ollama_ssl_verify: Annotated[
+        str | bool, "Path to SSL certificate authority file, or False to disable verification."
+    ] = True  # Default: verify SSL
 
     def process_images(self, images):
         image_bytes = [self.img_to_base64(img) for img in images]
@@ -54,7 +57,7 @@ class OllamaService(BaseService):
         }
 
         try:
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(url, json=payload, headers=headers, verify=self.ollama_ssl_verify)
             response.raise_for_status()
             response_data = response.json()
 

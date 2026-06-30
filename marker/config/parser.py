@@ -81,6 +81,12 @@ class ConfigParser:
             default=None,
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
+        fn = click.option(
+            "--ollama_ssl_verify",
+            type=str,
+            default=None,
+            help="SSL verification. Can be a path to a certificate file, or 'false' to disable.",
+        )(fn)
         return fn
 
     def generate_config_dict(self) -> Dict[str, any]:
@@ -105,6 +111,11 @@ class ConfigParser:
                     config["pdftext_workers"] = 1
                 case "disable_image_extraction":
                     config["extract_images"] = False
+                case "ollama_ssl_verify":
+                    if v.lower() == "false":
+                        config["ollama_ssl_verify"] = False
+                    else:
+                        config["ollama_ssl_verify"] = v
                 case _:
                     config[k] = v
 
