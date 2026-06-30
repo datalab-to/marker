@@ -1,8 +1,7 @@
 import json
 import time
-from typing import List, Annotated, T
+from typing import List, Annotated, Mapping, T
 
-import PIL
 from PIL import Image
 import anthropic
 from anthropic import RateLimitError, APITimeoutError
@@ -66,11 +65,12 @@ class ClaudeService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        image: Image.Image | List[Image.Image] | None,
         block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         if max_retries is None:
             max_retries = self.max_retries

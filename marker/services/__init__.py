@@ -1,7 +1,7 @@
-from typing import Optional, List, Annotated
+from typing import Optional, List, Annotated, Mapping
 from io import BytesIO
 
-import PIL
+from PIL import Image
 from pydantic import BaseModel
 
 from marker.schema.blocks import Block
@@ -19,12 +19,12 @@ class BaseService:
         int, "The maximum number of output tokens to generate."
     ] = None
 
-    def img_to_base64(self, img: PIL.Image.Image, format: str = "WEBP"):
+    def img_to_base64(self, img: Image.Image, format: str = "WEBP"):
         image_bytes = BytesIO()
         img.save(image_bytes, format=format)
         return base64.b64encode(image_bytes.getvalue()).decode("utf-8")
 
-    def process_images(self, images: List[PIL.Image.Image]) -> list:
+    def process_images(self, images: List[Image.Image]) -> list:
         raise NotImplementedError
 
     def format_image_for_llm(self, image):
@@ -46,10 +46,11 @@ class BaseService:
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        image: Image.Image | List[Image.Image] | None,
         block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         raise NotImplementedError

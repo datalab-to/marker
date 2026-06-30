@@ -24,7 +24,7 @@ class PromptData(TypedDict):
     prompt: str
     image: Image.Image
     block: Block
-    schema: BaseModel
+    schema: type[BaseModel]
     page: PageGroup
     additional_data: dict | None
 

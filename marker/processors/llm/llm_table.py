@@ -1,4 +1,4 @@
-from typing import Annotated, List, Tuple
+from typing import Annotated, Any, List, cast
 
 from bs4 import BeautifulSoup
 from PIL import Image
@@ -6,18 +6,37 @@ from marker.logger import get_logger
 from pydantic import BaseModel
 
 from marker.processors.llm import BaseLLMComplexBlockProcessor
+from marker.processors.llm.llm_utils import (
+    inject_analysis_prompt,
+    strip_code_fences,
+    string_indicates_no_corrections,
+)
 from marker.schema import BlockTypes
 from marker.schema.blocks import Block, TableCell, Table
 from marker.schema.document import Document
 from marker.schema.groups.page import PageGroup
 from marker.schema.polygon import PolygonBox
+from marker.telemetry import build_marker_trace_headers
 
 logger = get_logger()
 
 
+def _int_attr(value: Any, default: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, list):
+        if not value:
+            return default
+        value = value[0]
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class LLMTableProcessor(BaseLLMComplexBlockProcessor):
     block_types: Annotated[
-        Tuple[BlockTypes],
+        tuple[BlockTypes, ...],
         "The block types to process.",
     ] = (BlockTypes.Table, BlockTypes.TableOfContents)
     max_rows_per_batch: Annotated[
@@ -28,10 +47,11 @@ class LLMTableProcessor(BaseLLMComplexBlockProcessor):
         int,
         "The maximum number of rows in a table to process with the LLM processor.  Beyond this will be skipped.",
     ] = 175
-    table_image_expansion_ratio: Annotated[
+    # NOTE: renamed from `table_image_expansion_ratio`.
+    image_expansion_ratio: Annotated[
         float,
         "The ratio to expand the image by when cropping.",
-    ] = 0
+    ] = 0.01
     rotation_max_wh_ratio: Annotated[
         float,
         "The maximum width/height ratio for table cells for a table to be considered rotated.",
@@ -40,10 +60,14 @@ class LLMTableProcessor(BaseLLMComplexBlockProcessor):
         int,
         "The maximum number of iterations to attempt rewriting a table.",
     ] = 2
+    analysis_style: Annotated[
+        str,
+        "How to structure the LLM analysis field: 'summary', 'deep', or 'auto'.",
+    ] = "summary"
     table_rewriting_prompt: Annotated[
         str,
         "The prompt to use for rewriting text.",
-        "Default is a string containing the Gemini rewriting prompt.",
+        "Default is a string containing the LLM rewriting prompt.",
     ] = """You are a text correction expert specializing in accurately reproducing text from images.
 You will receive an image and an html representation of the table in the image.
 Your task is to correct any errors in the html representation.  The html representation should be as faithful to the original table image as possible.  The table image may be rotated, but ensure the html representation is not rotated.  Make sure to include HTML for the full table, including the opening and closing table tags.
@@ -61,8 +85,17 @@ Some guidelines:
 1. Carefully examine the provided text block image.
 2. Analyze the html representation of the table.
 3. Write a comparison of the image and the html representation, paying special attention to the column headers matching the correct column values.
-4. If the html representation is completely correct, or you cannot read the image properly, then write "No corrections needed."  If the html representation has errors, generate the corrected html representation.  Output only either the corrected html representation or "No corrections needed."
-5. If you made corrections, analyze your corrections against the original image, and provide a score from 1-5, indicating how well the corrected html matches the image, with 5 being perfect.
+4. {{analysis_instruction}}
+5. Output a single JSON object (and only JSON) matching this schema:
+    - `comparison`: short string
+    {{analysis_schema}}
+    - `correction_needed`: boolean
+    - `corrected_html`: corrected full table HTML (empty string when `correction_needed` is false)
+    - `score`: integer 1-5 (use 5 when `correction_needed` is false), indicating your confidence in your analysis, and the quality of the corrected HTML representation.
+6. If the html representation is completely correct, set `correction_needed` to false and `corrected_html` to "".
+7. If you cannot read the image properly or fully, do your best to make as many corrections as you can, set `score` to 1 and `correction_needed` to True.
+    We will send your corrected HTML + image again for another round of correction.
+8. If the html representation has errors, set `correction_needed` to true and provide the corrected full table HTML in `corrected_html`.
 **Example:**
 Input:
 ```html
@@ -79,12 +112,15 @@ Input:
 </table>
 ```
 Output:
-comparison: The image shows a table with 2 rows and 3 columns.  The text and formatting of the html table matches the image.  The column headers match the correct column values.
-```html
-No corrections needed.
+```json
+{
+  "comparison": "The image shows a table with 2 rows and 3 columns. The text and formatting of the html table matches the image. The column headers match the correct column values.",
+  "correction_needed": false,
+  "corrected_html": "",
+  "analysis": "I did not make any corrections, as the html representation was already accurate.",
+  "score": 5
+}
 ```
-analysis: I did not make any corrections, as the html representation was already accurate.
-score: 5
 **Input:**
 ```html
 {block_html}
@@ -119,8 +155,9 @@ score: 5
             return image.rotate(90, expand=True)
 
     def process_rewriting(self, document: Document, page: PageGroup, block: Table):
-        children: List[TableCell] = block.contained_blocks(
-            document, (BlockTypes.TableCell,)
+        children = cast(
+            list[TableCell],
+            block.contained_blocks(document, (BlockTypes.TableCell,)),
         )
         if not children:
             # Happens if table/form processors didn't run
@@ -132,21 +169,32 @@ score: 5
         row_idxs = sorted(list(unique_rows))
 
         if row_count > self.max_table_rows:
+            logger.debug(f"Skipping table with {row_count} rows, exceeds max of {self.max_table_rows}")
             return
 
         # Inference by chunk to handle long tables better
-        parsed_cells = []
+        parsed_cells: list[TableCell] = []
         row_shift = 0
         block_image = self.extract_image(document, block)
+        page_highres_image = page.get_image(highres=True)
+        if page_highres_image is None:
+            logger.error("Failed to get high resolution image for page")
+            return
+        page_highres_size = page_highres_image.size
+
+        # Match extract_image expansion so coordinate math aligns with block_image.
         block_rescaled_bbox = block.polygon.rescale(
-            page.polygon.size, page.get_image(highres=True).size
-        ).bbox
+            page.polygon.size, page_highres_size
+        ).expand(self.image_expansion_ratio, self.image_expansion_ratio).bbox
+        chunk_count = (row_count + self.max_rows_per_batch - 1) // self.max_rows_per_batch
         for i in range(0, row_count, self.max_rows_per_batch):
+            chunk_index = i // self.max_rows_per_batch
             batch_row_idxs = row_idxs[i : i + self.max_rows_per_batch]
+            is_last_chunk = i + self.max_rows_per_batch >= row_count
             batch_cells = [cell for cell in children if cell.row_id in batch_row_idxs]
             batch_cell_bboxes = [
                 cell.polygon.rescale(
-                    page.polygon.size, page.get_image(highres=True).size
+                    page.polygon.size, page_highres_size
                 ).bbox
                 for cell in batch_cells
             ]
@@ -157,20 +205,33 @@ score: 5
                 max([bbox[2] for bbox in batch_cell_bboxes]) - block_rescaled_bbox[0],
                 max([bbox[3] for bbox in batch_cell_bboxes]) - block_rescaled_bbox[1],
             ]
+            if self.image_expansion_ratio > 0:
+                # Keep horizontal expansion symmetric across chunks.
+                batch_bbox[0] = 0
+                batch_bbox[2] = block_image.size[0]
             if i == 0:
                 # Ensure first image starts from the beginning
                 batch_bbox[0] = 0
                 batch_bbox[1] = 0
-            elif i > row_count - self.max_rows_per_batch + 1:
+            if is_last_chunk:
                 # Ensure final image grabs the entire height and width
                 batch_bbox[2] = block_image.size[0]
                 batch_bbox[3] = block_image.size[1]
 
-            batch_image = block_image.crop(batch_bbox)
+            batch_image = block_image.crop(cast(tuple[int, int, int, int], tuple(batch_bbox)))
             block_html = block.format_cells(document, [], None, batch_cells)
             batch_image = self.handle_image_rotation(batch_cells, batch_image)
             batch_parsed_cells = self.rewrite_single_chunk(
-                page, block, block_html, batch_cells, batch_image
+                document,
+                page,
+                block,
+                block_html,
+                batch_cells,
+                batch_image,
+                chunk_index=chunk_index,
+                chunk_count=chunk_count,
+                row_start=batch_row_idxs[0] if batch_row_idxs else None,
+                row_end=batch_row_idxs[-1] if batch_row_idxs else None,
             )
             if batch_parsed_cells is None:
                 return  # Error occurred or no corrections needed
@@ -187,28 +248,69 @@ score: 5
 
     def rewrite_single_chunk(
         self,
+        document: Document,
         page: PageGroup,
         block: Block,
         block_html: str,
         children: List[TableCell],
         image: Image.Image,
         total_iterations: int = 0,
+        *,
+        chunk_index: int = 0,
+        chunk_count: int = 1,
+        row_start: int | None = None,
+        row_end: int | None = None,
     ):
-        prompt = self.table_rewriting_prompt.replace("{block_html}", block_html)
+        if self.llm_service is None:
+            raise ValueError("LLM service is not initialized")
 
-        response = self.llm_service(prompt, image, block, TableSchema)
+        prompt_template = inject_analysis_prompt(
+            self.table_rewriting_prompt, self.analysis_style
+        )
+        prompt = prompt_template.replace("{block_html}", block_html)
 
-        if not response or "corrected_html" not in response:
+        headers = build_marker_trace_headers(
+            source_path=document.filepath,
+            processor=self.__class__.__name__,
+            block_id=str(block.id),
+            page_id=page.page_id,
+            extra={
+                "TableChunk": f"{chunk_index + 1}/{chunk_count}",
+                "RowStart": row_start,
+                "RowEnd": row_end,
+                "Iteration": total_iterations,
+            },
+        )
+        response = self.llm_service(prompt, image, block, TableSchema, extra_headers=headers)
+
+        if not response:
             block.update_metadata(llm_error_count=1)
             return
 
-        corrected_html = response["corrected_html"]
+        correction_needed = response.get("correction_needed", None)
+        corrected_html = response.get("corrected_html", "") or ""
 
-        # The original table is okay
-        if "no corrections needed" in corrected_html.lower():
+        if correction_needed is None:
+            correction_needed = bool(corrected_html) and not string_indicates_no_corrections(
+                corrected_html
+            )
+
+        if correction_needed is False:
             return
 
-        corrected_html = corrected_html.strip().lstrip("```html").rstrip("```").strip()
+        # Legacy fallback if LLM did not conform to JSON Schema instructions
+        if string_indicates_no_corrections(corrected_html):
+            return
+
+        if not corrected_html:
+            block.update_metadata(llm_error_count=1)
+            return
+
+        # The original table is okay
+        if string_indicates_no_corrections(corrected_html):
+            return
+
+        corrected_html = strip_code_fences(corrected_html)
 
         # Re-iterate if low score
         total_iterations += 1
@@ -217,11 +319,22 @@ score: 5
         logger.debug(f"Got table rewriting score {score} with analysis: {analysis}")
         if total_iterations < self.max_table_iterations and score < 4:
             logger.info(
-                f"Table rewriting low score {score}, on iteration {total_iterations}"
+                f"Table rewriting low score {score}, on iteration {total_iterations} "
+                "Trying again."
             )
             block_html = corrected_html
             return self.rewrite_single_chunk(
-                page, block, block_html, children, image, total_iterations
+                document,
+                page,
+                block,
+                block_html,
+                children,
+                image,
+                total_iterations,
+                chunk_index=chunk_index,
+                chunk_count=chunk_count,
+                row_start=row_start,
+                row_end=row_end,
             )
 
         parsed_cells = self.parse_html_table(corrected_html, block, page)
@@ -264,7 +377,7 @@ score: 5
             row_tds = row.find_all(["td", "th"])
             curr_cols = 0
             for cell in row_tds:
-                colspan = int(cell.get("colspan", 1))
+                colspan = _int_attr(cell.get("colspan"), 1)
                 curr_cols += colspan
             if curr_cols > max_cols:
                 max_cols = curr_cols
@@ -283,8 +396,8 @@ score: 5
                     break
 
                 cell_text = self.get_cell_text(cell).strip()
-                rowspan = min(int(cell.get("rowspan", 1)), len(rows) - i)
-                colspan = min(int(cell.get("colspan", 1)), max_cols - cur_col)
+                rowspan = min(_int_attr(cell.get("rowspan"), 1), len(rows) - i)
+                colspan = min(_int_attr(cell.get("colspan"), 1), max_cols - cur_col)
                 cell_rows = list(range(i, i + rowspan))
                 cell_cols = list(range(cur_col, cur_col + colspan))
 
@@ -321,7 +434,8 @@ score: 5
 
 
 class TableSchema(BaseModel):
-    comparison: str
-    corrected_html: str
-    analysis: str
-    score: int
+    comparison: str = ""
+    analysis: str = ""
+    correction_needed: bool = False
+    corrected_html: str = ""
+    score: int = 5

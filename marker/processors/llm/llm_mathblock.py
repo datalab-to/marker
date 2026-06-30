@@ -6,11 +6,16 @@ from tqdm import tqdm
 
 from marker.output import json_to_html, unwrap_outer_tag
 from marker.processors.llm import BaseLLMComplexBlockProcessor
+from marker.processors.llm.llm_utils import (
+    strip_code_fences,
+    string_indicates_no_corrections,
+)
 
 from marker.schema import BlockTypes
 from marker.schema.blocks import Block, InlineMath
 from marker.schema.document import Document
 from marker.schema.groups import PageGroup
+from marker.telemetry import build_marker_trace_headers
 
 
 class LLMMathBlockProcessor(BaseLLMComplexBlockProcessor):
@@ -41,16 +46,20 @@ Your task is to correct any errors in the extracted text, including math, format
 2. Analyze the text that has been extracted from the block.
 3. Compare the extracted text to the corresponding text in the image.
 4. Write a short analysis of the text block, including any errors you see in the extracted text.
-5. If there are no errors in any of the extracted text, output "No corrections needed".
-6. Correct any errors in the extracted text, including:
+5. Output a single JSON object (and only JSON) matching this schema:
+    - `analysis`: short string
+    - `correction_needed`: boolean
+    - `corrected_html`: corrected HTML string (empty when `correction_needed` is false)
+6. If there are no errors, set `correction_needed` to false and `corrected_html` to "".
+7. If there are errors, set `correction_needed` to true and correct any errors in the extracted text, including:
     * Inline math: Ensure all mathematical expressions are correctly formatted and rendered.  Surround them with <math>...</math> tags.  The math expressions should be rendered in simple, concise, KaTeX-compatible LaTeX.  Do not use $ or $$ as delimiters.
     * If a math expression is not in LaTeX format, convert it to LaTeX format, and surround it with <math>...</math> tags.
     * Formatting: Maintain consistent formatting with the text block image, including spacing, indentation, subscripts/superscripts, and special characters.  Use the <i>, <b>, <sup>, <sub>, and <span> tags to format the text as needed.
     * Other inaccuracies:  If the image is handwritten then you may correct any spelling errors, or other discrepancies.
     * Ensure lines wrap properly, and that newlines are not in the middle of sentences.
-7. Do not remove any formatting i.e bold, italics, math, superscripts, subscripts, etc from the extracted text unless it is necessary to correct an error.
-8. Output the corrected text in html format, as shown in the example below.  Only use the p, math, br, a, i, b, sup, sub, and span tags.
-9. You absolutely cannot remove any <a href='#...'>...</a> tags, those are extremely important for references and are coming directly from the document, you MUST always preserve them.
+8. Do not remove any formatting i.e bold, italics, math, superscripts, subscripts, etc from the extracted text unless it is necessary to correct an error.
+9. `corrected_html` must only use the p, math, br, a, i, b, sup, sub, and span tags.
+10. You absolutely cannot remove any <a href='#...'>...</a> tags, those are extremely important for references and are coming directly from the document, you MUST always preserve them.
 
 **Example:**
 
@@ -62,9 +71,12 @@ with parameters w, the optimization objective of AT can be formulated as follows
 ```
 
 Output:
-analysis: The inline math is not in LaTeX format and is not surrounded by <math>...</math> tags.
-```html
-Adversarial training <i>(AT)</i> <a href='#page-9-1'>[23]</a>, which aims to minimize the model's risk under the worst-case perturbations, is currently the most effective approach for improving the robustness of deep neural networks. For a given neural network <math>f(x, w)</math> with parameters <math>w</math>, the optimization objective of AT can be formulated as follows:
+```json
+{
+  "analysis": "The inline math is not in LaTeX format and is not surrounded by <math>...</math> tags.",
+  "correction_needed": true,
+  "corrected_html": "Adversarial training <i>(AT)</i> <a href='#page-9-1'>[23]</a>, which aims to minimize the model's risk under the worst-case perturbations, is currently the most effective approach for improving the robustness of deep neural networks. For a given neural network <math>f(x, w)</math> with parameters <math>w</math>, the optimization objective of AT can be formulated as follows:"
+}
 ```
 
 **Input:**
@@ -144,7 +156,7 @@ Adversarial training <i>(AT)</i> <a href='#page-9-1'>[23]</a>, which aims to min
         pbar = tqdm(
             total=total_blocks,
             desc=f"{self.__class__.__name__} running",
-            disable=self.disable_tqdm
+            disable=self.disable_tqdm,
         )
         with ThreadPoolExecutor(max_workers=self.max_concurrency) as executor:
             for future in as_completed(
@@ -173,19 +185,37 @@ Adversarial training <i>(AT)</i> <a href='#page-9-1'>[23]</a>, which aims to min
         prompt = self.text_math_rewriting_prompt.replace("{extracted_html}", block_text)
 
         image = self.extract_image(document, block)
-        response = self.llm_service(prompt, image, block, LLMTextSchema)
+        headers = build_marker_trace_headers(
+            source_path=document.filepath,
+            processor=self.__class__.__name__,
+            block_id=str(block.id),
+            page_id=page.page_id,
+        )
+        response = self.llm_service(
+            prompt, image, block, LLMTextSchema, extra_headers=headers
+        )
 
-        if not response or "corrected_html" not in response:
+        if not response:
             block.update_metadata(llm_error_count=1)
             return
 
-        corrected_html = response["corrected_html"]
+        correction_needed = response.get("correction_needed", None)
+        corrected_html = response.get("corrected_html", "") or ""
+
+        if correction_needed is False:
+            return
+
+        # Legacy fallback: older prompts used plain text like "No corrections needed."
+        if string_indicates_no_corrections(corrected_html):
+            return
+
         if not corrected_html:
             block.update_metadata(llm_error_count=1)
             return
 
-        # Block is fine
-        if "no corrections needed" in corrected_html.lower():
+        corrected_html = strip_code_fences(corrected_html)
+
+        if string_indicates_no_corrections(corrected_html):
             return
 
         if len(corrected_html) < len(block_text) * 0.6:
@@ -196,5 +226,6 @@ Adversarial training <i>(AT)</i> <a href='#page-9-1'>[23]</a>, which aims to min
 
 
 class LLMTextSchema(BaseModel):
-    analysis: str
-    corrected_html: str
+    analysis: str = ""
+    correction_needed: bool = False
+    corrected_html: str = ""

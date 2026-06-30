@@ -2,9 +2,9 @@ import json
 import time
 import traceback
 from io import BytesIO
-from typing import List, Annotated
+from typing import List, Annotated, Mapping
 
-import PIL
+from PIL import Image
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -25,7 +25,7 @@ class BaseGeminiService(BaseService):
         int, "The thinking token budget to use for the service."
     ] = None
 
-    def img_to_bytes(self, img: PIL.Image.Image):
+    def img_to_bytes(self, img: Image.Image):
         image_bytes = BytesIO()
         img.save(image_bytes, format="WEBP")
         return image_bytes.getvalue()
@@ -43,11 +43,12 @@ class BaseGeminiService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        image: Image.Image | List[Image.Image] | None,
         block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         if max_retries is None:
             max_retries = self.max_retries

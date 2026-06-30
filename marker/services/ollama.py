@@ -1,7 +1,7 @@
 import json
-from typing import Annotated, List
+from typing import Annotated, List, Mapping
 
-import PIL
+from PIL import Image
 import requests
 from marker.logger import get_logger
 from pydantic import BaseModel
@@ -27,11 +27,12 @@ class OllamaService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        image: Image.Image | List[Image.Image] | None,
         block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         url = f"{self.ollama_base_url}/api/generate"
         headers = {"Content-Type": "application/json"}

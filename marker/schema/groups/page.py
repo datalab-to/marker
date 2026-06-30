@@ -1,5 +1,6 @@
+import io
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 import numpy as np
 
 from PIL import Image, ImageDraw
@@ -16,6 +17,21 @@ from marker.schema.polygon import PolygonBox
 from marker.util import matrix_intersection_area, sort_text_lines
 
 LINE_MAPPING_TYPE = List[Tuple[int, ProviderOutput]]
+
+
+def _ensure_pil_image(
+    image: Image.Image | bytes | bytearray | memoryview | None,
+) -> Image.Image | None:
+    if image is None:
+        return None
+    if isinstance(image, Image.Image):
+        return image
+    if isinstance(image, memoryview):
+        image = image.tobytes()
+    if isinstance(image, (bytes, bytearray)):
+        image = Image.open(io.BytesIO(image)).convert("RGB")
+        return image
+    return None
 
 
 class PageGroup(Group):
@@ -54,7 +70,7 @@ class PageGroup(Group):
         highres: bool = False,
         remove_blocks: Sequence[BlockTypes] | None = None,
         **kwargs,
-    ):
+    ) -> Image.Image:
         image = self.highres_image if highres else self.lowres_image
 
         # Check if RGB, convert if needed
@@ -64,6 +80,7 @@ class PageGroup(Group):
         # Avoid double OCR for certain elements
         if remove_blocks:
             image = image.copy()
+            image = cast((Image.Image | bytes), image)
             draw = ImageDraw.Draw(image)
             bad_blocks = [
                 block
@@ -75,7 +92,8 @@ class PageGroup(Group):
                 poly = [(int(p[0]), int(p[1])) for p in poly]
                 draw.polygon(poly, fill="white")
 
-        return image
+        # NOTE: always return Image.Image.
+        return _ensure_pil_image(image)
 
     @computed_field
     @property

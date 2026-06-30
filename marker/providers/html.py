@@ -6,6 +6,7 @@ from marker.providers.pdf import PdfProvider
 
 class HTMLProvider(PdfProvider):
     def __init__(self, filepath: str, config=None):
+        self.source_filepath = filepath
         temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
         self.temp_pdf_path = temp_pdf.name
         temp_pdf.close()

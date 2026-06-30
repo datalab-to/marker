@@ -1,16 +1,25 @@
 import json
 import time
-from typing import Annotated, List
+from typing import Annotated, List, Mapping, cast
 
 import openai
-import PIL
 from marker.logger import get_logger
+from marker.telemetry import sanitize_headers
 from openai import APITimeoutError, RateLimitError
 from PIL import Image
 from pydantic import BaseModel
 
 from marker.schema.blocks import Block
 from marker.services import BaseService
+
+try:
+    from openai.types.chat import (
+        ChatCompletionContentPartParam,
+        ChatCompletionMessageParam,
+    )
+except Exception:  # pragma: no cover
+    ChatCompletionContentPartParam = object  # type: ignore[misc,assignment]
+    ChatCompletionMessageParam = object  # type: ignore[misc,assignment]
 
 logger = get_logger()
 
@@ -23,7 +32,7 @@ class OpenAIService(BaseService):
         "gpt-4o-mini"
     )
     openai_api_key: Annotated[
-        str, "The API key to use for the OpenAI-like service."
+        str | None, "The API key to use for the OpenAI-like service."
     ] = None
     openai_image_format: Annotated[
         str,
@@ -61,11 +70,12 @@ class OpenAIService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        image: Image.Image | List[Image.Image] | None,
         block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         if max_retries is None:
             max_retries = self.max_retries
@@ -74,9 +84,11 @@ class OpenAIService(BaseService):
             timeout = self.timeout
 
         client = self.get_client()
-        image_data = self.format_image_for_llm(image)
+        image_data = cast(
+            list[ChatCompletionContentPartParam], self.format_image_for_llm(image)
+        )
 
-        messages = [
+        messages: list[ChatCompletionMessageParam] = [
             {
                 "role": "user",
                 "content": [
@@ -87,19 +99,28 @@ class OpenAIService(BaseService):
         ]
 
         total_tries = max_retries + 1
+        request_headers = {
+            "X-Title": "Marker",
+            "HTTP-Referer": "https://github.com/datalab-to/marker",
+        }
+        if block is not None and "X-Marker-Block" not in (extra_headers or {}):
+            request_headers["X-Marker-Block"] = str(block.id)
+        request_headers.update(sanitize_headers(extra_headers))
+
         for tries in range(1, total_tries + 1):
             try:
-                response = client.beta.chat.completions.parse(
-                    extra_headers={
-                        "X-Title": "Marker",
-                        "HTTP-Referer": "https://github.com/datalab-to/marker",
-                    },
+                response = client.chat.completions.parse(
+                    extra_headers=request_headers,
                     model=self.openai_model,
                     messages=messages,
                     timeout=timeout,
                     response_format=response_schema,
                 )
                 response_text = response.choices[0].message.content
+                if response_text is None:
+                    raise ValueError("LLM response missing content")
+                if response.usage is None:
+                    raise ValueError("LLM response missing usage information")
                 total_tokens = response.usage.total_tokens
                 if block:
                     block.update_metadata(

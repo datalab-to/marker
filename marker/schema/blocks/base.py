@@ -101,6 +101,7 @@ class Block(BaseModel):
     highres_image: Image.Image | None = None
     removed: bool = False  # Has block been replaced by new block?
     _metadata: Optional[dict] = None
+    html: str | None = None  # will be populated by processors such as LLMFormProcessor
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

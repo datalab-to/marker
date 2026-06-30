@@ -1,9 +1,9 @@
 import json
 import time
-from typing import Annotated, List
+from typing import Annotated, List, Mapping
 
-import PIL
 from marker.logger import get_logger
+from marker.telemetry import sanitize_headers
 from openai import AzureOpenAI, APITimeoutError, RateLimitError
 from PIL import Image
 from pydantic import BaseModel
@@ -26,7 +26,7 @@ class AzureOpenAIService(BaseService):
         str, "The deployment name for the Azure OpenAI model."
     ] = None
 
-    def process_images(self, images: List[PIL.Image.Image]) -> list:
+    def process_images(self, images: List[Image.Image]) -> list:
         if isinstance(images, Image.Image):
             images = [images]
 
@@ -43,11 +43,12 @@ class AzureOpenAIService(BaseService):
     def __call__(
         self,
         prompt: str,
-        image: PIL.Image.Image | List[PIL.Image.Image] | None,
+        image: Image.Image | List[Image.Image] | None,
         block: Block | None,
         response_schema: type[BaseModel],
         max_retries: int | None = None,
         timeout: int | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ):
         if max_retries is None:
             max_retries = self.max_retries
@@ -69,13 +70,18 @@ class AzureOpenAIService(BaseService):
         ]
 
         total_tries = max_retries + 1
+        request_headers = {
+            "X-Title": "Marker",
+            "HTTP-Referer": "https://github.com/datalab-to/marker",
+        }
+        if block is not None and "X-Marker-Block" not in (extra_headers or {}):
+            request_headers["X-Marker-Block"] = str(block.id)
+        request_headers.update(sanitize_headers(extra_headers))
+
         for tries in range(1, total_tries + 1):
             try:
                 response = client.beta.chat.completions.parse(
-                    extra_headers={
-                        "X-Title": "Marker",
-                        "HTTP-Referer": "https://github.com/datalab-to/marker",
-                    },
+                    extra_headers=request_headers,
                     model=self.deployment_name,
                     messages=messages,
                     timeout=timeout,
