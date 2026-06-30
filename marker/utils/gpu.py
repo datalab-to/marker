@@ -33,7 +33,7 @@ class GPUManager:
         if not torch.cuda.is_available():
             return False
         try:
-            subprocess.run(["nvidia-smi", "--version"], capture_output=True, check=True)
+            subprocess.run(["nvidia-smi", "--list-gpus"], capture_output=True, check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
