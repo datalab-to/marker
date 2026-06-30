@@ -39,6 +39,10 @@ class HTMLRenderer(BaseRenderer):
         bool,
         "Whether to paginate the output.",
     ] = False
+    pagination_offset: Annotated[
+        int,
+        "An integer offset added to each page number when paginating output.",
+    ] = 0
 
     def extract_image(self, document, image_id):
         image_block = document.get_block(image_id)

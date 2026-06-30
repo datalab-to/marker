@@ -81,6 +81,18 @@ class ConfigParser:
             default=None,
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
+        fn = click.option(
+            "--paginate_output",
+            is_flag=True,
+            default=False,
+            help="Paginates the output, using {PAGE_NUMBER} followed by '-' * 48.",
+        )(fn)
+        fn = click.option(
+            "--pagination_offset",
+            type=int,
+            default=0,
+            help="Integer offset added to each page number when paginating output.",
+        )(fn)
         return fn
 
     def generate_config_dict(self) -> Dict[str, any]:
