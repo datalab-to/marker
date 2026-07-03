@@ -118,8 +118,6 @@ marker_single /path/to/file.pdf
 
 You can pass in PDFs or images.
 
-Regardless of the `--output_format`, marker also writes a companion `{filename}_meta.json` file next to the primary output, containing the document metadata.
-
 Options:
 - `--page_range TEXT`: Specify which pages to process. Accepts comma-separated page numbers and ranges. Example: `--page_range "0,5-10,20"` will process pages 0, 5 through 10, and page 20.
 - `--output_format [markdown|json|html|chunks]`: Specify the format for the output results.
