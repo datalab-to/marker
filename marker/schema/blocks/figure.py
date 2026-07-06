@@ -5,6 +5,8 @@ from marker.schema.blocks import Block
 class Figure(Block):
     block_type: BlockTypes = BlockTypes.Figure
     description: str | None = None
+    short_caption: str | None = None
+    long_description: str | None = None
     html: str | None = None
     block_description: str = "A chart or other image that contains data."
 

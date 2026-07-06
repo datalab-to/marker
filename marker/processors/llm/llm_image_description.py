@@ -14,6 +14,10 @@ class LLMImageDescriptionProcessor(BaseLLMSimpleBlockProcessor):
         BlockTypes.Figure,
     )
     extract_images: Annotated[bool, "Extract images from the document."] = True
+    llm_image_context: Annotated[
+        bool,
+        "If enabled, defer to LLMImageContextDescriptionProcessor and skip this processor.",
+    ] = False
     image_description_prompt: Annotated[
         str,
         "The prompt to use for generating image descriptions.",
@@ -40,6 +44,8 @@ In this figure, a bar chart titled "Fruit Preference Survey" is showing the numb
 """
 
     def inference_blocks(self, document: Document) -> List[BlockData]:
+        if self.llm_image_context:
+            return []
         blocks = super().inference_blocks(document)
         if self.extract_images:
             return []

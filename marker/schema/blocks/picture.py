@@ -5,6 +5,8 @@ from marker.schema.blocks import Block
 class Picture(Block):
     block_type: BlockTypes = BlockTypes.Picture
     description: str | None = None
+    short_caption: str | None = None
+    long_description: str | None = None
     block_description: str = "An image block that represents a picture."
     html: str | None = None
 

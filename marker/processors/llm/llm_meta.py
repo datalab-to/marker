@@ -26,7 +26,7 @@ class LLMSimpleBlockMetaProcessor(BaseLLMProcessor):
         self.processors = processor_lst
 
     def __call__(self, document: Document):
-        if not self.use_llm or self.llm_service is None:
+        if not self.llm_enabled or self.llm_service is None:
             return
 
         total = sum(

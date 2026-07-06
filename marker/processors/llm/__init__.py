@@ -51,17 +51,25 @@ class BaseLLMProcessor(BaseProcessor):
         bool,
         "Whether to use the LLM model.",
     ] = False
+    llm_image_context: Annotated[
+        bool,
+        "Whether to use the context-aware image-description LLM processor (orthogonal to use_llm).",
+    ] = False
     disable_tqdm: Annotated[
         bool,
         "Whether to disable the tqdm progress bar.",
     ] = False
     block_types = None
 
+    @property
+    def llm_enabled(self) -> bool:
+        return self.use_llm or self.llm_image_context
+
     def __init__(self, llm_service: BaseService, config=None):
         super().__init__(config)
 
         self.llm_service = None
-        if not self.use_llm:
+        if not self.llm_enabled:
             return
 
         self.llm_service = llm_service
