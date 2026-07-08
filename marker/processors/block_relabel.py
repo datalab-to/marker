@@ -66,20 +66,26 @@ class BlockRelabelProcessor(BaseProcessor):
                 
                 block_id = BlockId(page_id=page.page_id, block_id=block.block_id, block_type=block.block_type)
                 confidence_thresh, relabel_block_type = self.block_relabel_map[block.block_type]
-                confidence = block.top_k.get(block.block_type)
-                if confidence > confidence_thresh:
-                    logger.debug(f"Skipping relabel for {block_id}; Confidence: {confidence} > Confidence Threshold {confidence_thresh} for re-labelling")
-                    continue
-
-                new_block_cls = get_block_class(relabel_block_type)
-                new_block = new_block_cls(
-                    polygon=deepcopy(block.polygon),
-                    page_id=block.page_id,
-                    structure=deepcopy(block.structure),
-                    text_extraction_method=block.text_extraction_method,
-                    source="heuristics",
-                    top_k=block.top_k,
-                    metadata=block.metadata
-                )
-                page.replace_block(block, new_block)
-                logger.debug(f"Relabelled {block_id} to {relabel_block_type}")
+                
+                confidence = 0.0
+                if hasattr(block, 'top_k') and block.top_k is not None:
+                    confidence = block.top_k.get(block.block_type, 0.0)
+                
+                if confidence_thresh >= 1.0 or confidence <= confidence_thresh:
+                    try:
+                        new_block_cls = get_block_class(relabel_block_type)
+                        new_block = new_block_cls(
+                            polygon=deepcopy(block.polygon),
+                            page_id=block.page_id,
+                            structure=deepcopy(block.structure),
+                            text_extraction_method=block.text_extraction_method,
+                            source="heuristics",
+                            top_k=block.top_k,
+                            metadata=block.metadata
+                        )
+                        page.replace_block(block, new_block)
+                        logger.debug(f"Relabelled {block_id} to {relabel_block_type}")
+                    except Exception as e:
+                        logger.warning(f"Failed to relabel block {block_id}: {e}")
+                else:
+                    logger.debug(f"Skipping relabel for {block_id}; Confidence: {confidence} > Confidence Threshold {confidence_thresh}")
