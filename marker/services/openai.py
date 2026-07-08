@@ -120,6 +120,18 @@ class OpenAIService(BaseService):
                         f"Rate limit error: {e}. Retrying in {wait_time} seconds... (Attempt {tries}/{total_tries})",
                     )
                     time.sleep(wait_time)
+            except json.JSONDecodeError as e:
+                # The response was not valid JSON
+                if tries == total_tries:
+                    # Last attempt failed. Give up
+                    logger.error(
+                        f"JSONDecodeError: {e}. Max retries reached. Giving up. (Attempt {tries}/{total_tries})",
+                    )
+                    break
+                else:
+                    logger.warning(
+                        f"JSONDecodeError: {e}. (Attempt {tries}/{total_tries})",
+                    )
             except Exception as e:
                 logger.error(f"OpenAI inference failed: {e}")
                 break
