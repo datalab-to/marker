@@ -229,6 +229,9 @@ class Markdownify(MarkdownConverter):
         else:
             return text
 
+    def convert_del(self, el, text, parent_tags):
+        return f"~~{text}~~" if text else ""
+
     def escape(self, text, parent_tags=None):
         text = super().escape(text, parent_tags)
         if self.options["escape_dollars"]:
