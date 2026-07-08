@@ -125,7 +125,7 @@ Section Headers
         response = self.llm_service(
             prompt, None, document.pages[0], SectionHeaderSchema
         )
-        logger.debug(f"Got section header reponse from LLM: {response}")
+        logger.debug(f"Got section header response from LLM: {response}")
 
         if not response or "correction_type" not in response:
             logger.warning("LLM did not return a valid response")

@@ -10,3 +10,8 @@ repos:
     # Run the formatter.
     - id: ruff-format
       types_or: [ python, pyi ]
+- repo: https://github.com/codespell-project/codespell
+  # Configuration for codespell is in .pre-commit-config.yaml
+  rev: v2.4.1
+  hooks:
+  - id: codespell

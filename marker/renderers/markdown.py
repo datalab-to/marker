@@ -91,7 +91,7 @@ class Markdownify(MarkdownConverter):
             if block_type in [BlockTypes.TextInlineMath, BlockTypes.Text]:
                 if regex.compile(
                     rf".*[\p{{Ll}}|\d][{hyphens}]\s?$", regex.DOTALL
-                ).match(text):  # handle hypenation across pages
+                ).match(text):  # handle hyphenation across pages
                     return regex.split(rf"[{hyphens}]\s?$", text)[0]
                 return f"{text} "
             if block_type == BlockTypes.ListGroup:

@@ -123,7 +123,7 @@ class Span(Block):
         elif self.bold:
             text = f"<b>{text}</b>"
         elif self.math:
-            block_envs = ["split", "align", "gather", "multline"]
+            block_envs = ["split", "align", "gather", "multiline"]
             if any(f"\\begin{{{env}}}" in text for env in block_envs):
                 display_mode = "block"
             else:

@@ -668,7 +668,7 @@ Learning to debug can be frustrating, but it is a valuable skill that is useful 
 - **executable:** Another name for object code that is ready to be executed.
 - **prompt:** Characters displayed by the interpreter to indicate that it is ready to take input from the user.
 - **script:** A program stored in a file (usually one that will be interpreted).
-- **interactive mode:** A way of using the Python interpreter by typing commands and expres sions at the prompt.
+- **interactive mode:** A way of using the Python interpreter by typing commands and expressions at the prompt.
 - **script mode:** A way of using the Python interpreter to read and execute statements in a script.
 - **program:** A set of instructions that specifies a computation.
 - **algorithm:** A general process for solving a category of problems.
@@ -1649,7 +1649,7 @@ Inside the function, t refers to the same turtle bob refers to, so lt(t) has the
 ray = Turtle()
 square(ray)
 ```
-Wrapping a piece of code up in a function is called **encapsulation**. One of the benefits of encapsulation is that it attaches a name to the code, which serves as a kind of documentation. Another advantage is that if you re-use the code, it is more concise to call a function twice than to copy and paste the body!
+Wrapping a piece of code up in a function is called **encapsulation**. One of the benefits of encapsulation is that it attaches a name to the code, which serves as a kind of documentation. Another advantage is that if you reuse the code, it is more concise to call a function twice than to copy and paste the body!
 
 #### <span id="page-55-1"></span>**4.5 Generalization**
 
@@ -1721,7 +1721,7 @@ Now the number of segments is (approximately) circumference/3, so the length of 
 
 ### <span id="page-57-0"></span>**4.7 Refactoring**
 
-When I wrote circle, I was able to re-use polygon because a many-sided polygon is a good approximation of a circle. But arc is not as cooperative; we can't use polygon or circle to draw an arc.
+When I wrote circle, I was able to reuse polygon because a many-sided polygon is a good approximation of a circle. But arc is not as cooperative; we can't use polygon or circle to draw an arc.
 
 One alternative is to start with a copy of polygon and transform it into arc. The result might look like this:
 
@@ -1735,7 +1735,7 @@ def arc(t, r, angle):
         fd(t, step_length)
         lt(t, step_angle)
 ```
-The second half of this function looks like polygon, but we can't re-use polygon without changing the interface. We could generalize polygon to take an angle as a third argument, but then polygon would no longer be an appropriate name! Instead, let's call the more general function polyline:
+The second half of this function looks like polygon, but we can't reuse polygon without changing the interface. We could generalize polygon to take an angle as a third argument, but then polygon would no longer be an appropriate name! Instead, let's call the more general function polyline:
 
 ```
 def polyline(t, n, length, angle):
@@ -1853,7 +1853,7 @@ Preconditions are the responsibility of the caller. If the caller violates a (pr
 
 *Solution:* [http: // thinkpython. com/ code/ letters. py](http://thinkpython.com/code/letters.py) *, also requires* [http:](http://thinkpython.com/code/polygon.py) [// thinkpython. com/ code/ polygon. py](http://thinkpython.com/code/polygon.py) *.*
 
-**Exercise 4.5.** *Read about spirals at* <http://en.wikipedia.org/wiki/Spiral>*; then write a program that draws an Archimedian spiral (or one of the other kinds). Solution:* [http:](http://thinkpython.com/code/spiral.py) [// thinkpython. com/ code/ spiral. py](http://thinkpython.com/code/spiral.py) *.*
+**Exercise 4.5.** *Read about spirals at* <http://en.wikipedia.org/wiki/Spiral>*; then write a program that draws an Archimedean spiral (or one of the other kinds). Solution:* [http:](http://thinkpython.com/code/spiral.py) [// thinkpython. com/ code/ spiral. py](http://thinkpython.com/code/spiral.py) *.*
 
 # <span id="page-62-0"></span>**Chapter 5**
 
@@ -8529,7 +8529,7 @@ box2 = copy.copy(box)
 ```
 lumpy.object_diagram()
 ```
-Figure [C.5](#page-236-1) shows the result. copy.copy make a shallow copy, so box and box2 have their own width and height, but they share the same embedded Point object. This kind of sharing is usually fine with immutable objects, but with mutable types, it is highly errorprone.
+Figure [C.5](#page-236-1) shows the result. copy.copy make a shallow copy, so box and box2 have their own width and height, but they share the same embedded Point object. This kind of sharing is usually fine with immutable objects, but with mutable types, it is highly error-prone.
 
 #### <span id="page-236-0"></span>**C.4 Function and class objects**
 
