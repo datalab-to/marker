@@ -1,3 +1,4 @@
+import html as html_lib
 import textwrap
 
 from PIL import Image
@@ -100,8 +101,20 @@ class HTMLRenderer(BaseRenderer):
                     image = self.extract_image(document, ref_block_id)
                     image_name = f"{ref_block_id.to_path()}.{settings.OUTPUT_IMAGE_FORMAT.lower()}"
                     images[image_name] = image
+                    # Extract description from content and use as alt text to avoid duplication
+                    alt_text = ""
+                    content_soup = BeautifulSoup(content, "html.parser")
+                    desc_tag = content_soup.find("p", attrs={"role": "img"})
+                    if desc_tag:
+                        alt_text = desc_tag.get_text().strip()
+                        # Remove the "Image ... description: " prefix
+                        prefix_end = alt_text.find("description: ")
+                        if prefix_end != -1:
+                            alt_text = alt_text[prefix_end + len("description: "):]
+                        desc_tag.decompose()
+                        content = str(content_soup)
                     element = BeautifulSoup(
-                        f"<p>{content}<img src='{image_name}'></p>", "html.parser"
+                        f"<p>{content}<img src='{image_name}' alt='{html_lib.escape(alt_text, quote=True)}'></p>", "html.parser"
                     )
                     ref.replace_with(self.insert_block_id(element, ref_block_id))
                 else:
