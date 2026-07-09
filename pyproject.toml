@@ -35,7 +35,6 @@ markdown2 = "^2.5.2"
 filetype = "^1.2.0"
 google-genai = "^1.0.0"
 anthropic = "^0.46.0"
-pre-commit = "^4.2.0"
 scikit-learn = "^1.6.1"
 
 # Optional dependencies for documents
@@ -61,6 +60,7 @@ lxml = "5.3.0"
 tabulate = "^0.9.0"
 latex2mathml = "^3.77.0"
 playwright = "^1.49.1"
+pre-commit = "^4.2.0"
 
 [tool.poetry.extras]
 full = ["mammoth", "openpyxl", "python-pptx", "ebooklib", "weasyprint"]
