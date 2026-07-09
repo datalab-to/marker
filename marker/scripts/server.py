@@ -2,6 +2,7 @@ import traceback
 
 import click
 import os
+import uuid
 
 from pydantic import BaseModel, Field
 from starlette.responses import HTMLResponse
@@ -14,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, Annotated
 import io
 
-from fastapi import FastAPI, Form, File, UploadFile
+from fastapi import FastAPI, Form, File, HTTPException, UploadFile
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.settings import settings
@@ -142,21 +143,33 @@ async def convert_pdf_upload(
         ..., description="The PDF file to convert.", media_type="application/pdf"
     ),
 ):
-    upload_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
-    with open(upload_path, "wb+") as upload_file:
-        file_contents = await file.read()
-        upload_file.write(file_contents)
+    safe_name = f"{uuid.uuid4().hex}_{os.path.basename(file.filename or 'upload')}"
+    upload_path = os.path.join(UPLOAD_DIRECTORY, safe_name)
+    upload_dir = os.path.realpath(UPLOAD_DIRECTORY)
+    resolved = os.path.realpath(upload_path)
 
-    params = CommonParams(
-        filepath=upload_path,
-        page_range=page_range,
-        force_ocr=force_ocr,
-        paginate_output=paginate_output,
-        output_format=output_format,
-    )
-    results = await _convert_pdf(params)
-    os.remove(upload_path)
-    return results
+    try:
+        if os.path.commonpath([upload_dir, resolved]) != upload_dir:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid filename") from exc
+
+    try:
+        with open(resolved, "wb+") as upload_file:
+            file_contents = await file.read()
+            upload_file.write(file_contents)
+
+        params = CommonParams(
+            filepath=resolved,
+            page_range=page_range,
+            force_ocr=force_ocr,
+            paginate_output=paginate_output,
+            output_format=output_format,
+        )
+        return await _convert_pdf(params)
+    finally:
+        if os.path.exists(resolved):
+            os.remove(resolved)
 
 
 @click.command()
