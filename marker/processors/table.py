@@ -142,6 +142,8 @@ class TableProcessor(BaseProcessor):
             for block in page.contained_blocks(document, self.block_types):
                 block.structure = []  # Remove any existing lines, spans, etc.
                 cells: List[SuryaTableCell] = tables[table_idx].cells
+                table_confidence = self.calculate_table_confidence(cells)
+                block.table_confidence = table_confidence
                 for cell in cells:
                     # Rescale the cell polygon to the page size
                     cell_polygon = PolygonBox(polygon=cell.polygon).rescale(
@@ -153,9 +155,11 @@ class TableProcessor(BaseProcessor):
                         corner[0] += block.polygon.bbox[0]
                         corner[1] += block.polygon.bbox[1]
 
+                    cell_confidence = self.calculate_cell_confidence(cell)
                     cell_block = TableCell(
                         polygon=cell_polygon,
                         text_lines=self.finalize_cell_text(cell),
+                        confidence=cell_confidence,
                         rowspan=cell.rowspan,
                         colspan=cell.colspan,
                         row_id=cell.row_id,
@@ -690,7 +694,7 @@ class TableProcessor(BaseProcessor):
             for cell_text, cell_needs_text in zip(ocr_res.text_lines, cells_need_text):
                 # Don't need to correct back to image size
                 # Table rec boxes are relative to the table
-                cell_text_lines = [{"text": t} for t in cell_text.text.split("<br>")]
+                cell_text_lines = [{"text": t, "confidence": cell_text.confidence} for t in cell_text.text.split("<br>")]
                 cell_needs_text.text_lines = cell_text_lines
 
     def get_table_rec_batch_size(self):
@@ -717,3 +721,34 @@ class TableProcessor(BaseProcessor):
         elif settings.TORCH_DEVICE_MODEL == "cuda":
             return 10
         return 4
+
+    def calculate_table_confidence(self, table_cells: List[SuryaTableCell]) -> float:
+        if not table_cells:
+            return 0.0
+        
+        total_confidence = 0.0
+        cell_count = 0
+        
+        for cell in table_cells:
+            if cell.text_lines:
+                cell_confidences = []
+                for line in cell.text_lines:
+                    if isinstance(line, dict) and "confidence" in line:
+                        cell_confidences.append(line["confidence"])
+                
+                if cell_confidences:
+                    total_confidence += sum(cell_confidences) / len(cell_confidences)
+                    cell_count += 1
+        
+        return total_confidence / cell_count if cell_count > 0 else 0.0
+
+    def calculate_cell_confidence(self, cell: SuryaTableCell) -> float:
+        if not cell.text_lines:
+            return 0.0
+        
+        confidences = []
+        for line in cell.text_lines:
+            if isinstance(line, dict) and "confidence" in line:
+                confidences.append(line["confidence"])
+        
+        return sum(confidences) / len(confidences) if confidences else 0.0

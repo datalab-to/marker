@@ -12,6 +12,7 @@ class TableCell(Block):
     col_id: int
     is_header: bool
     text_lines: List[str] | None = None
+    confidence: float | None = None
     block_description: str = "A cell in a table."
 
     @property

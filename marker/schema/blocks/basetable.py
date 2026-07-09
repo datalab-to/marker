@@ -8,6 +8,7 @@ from marker.schema.blocks.tablecell import TableCell
 class BaseTable(Block):
     block_type: BlockTypes | None = None
     html: str | None = None
+    table_confidence: float = 0.0
 
     @staticmethod
     def format_cells(
