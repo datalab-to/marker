@@ -34,6 +34,7 @@ from marker.logger import configure_logging, get_logger
 from marker.models import create_model_dict
 from marker.output import output_exists, save_output
 from marker.utils.gpu import GPUManager
+from marker.util import strings_to_classes
 
 configure_logging()
 logger = get_logger()
@@ -77,22 +78,33 @@ def process_single_pdf(args):
     try:
         if cli_options.get("debug_print"):
             logger.debug(f"Converting {fpath}")
+        renderers = config_parser.get_renderers()                       # Get all requested renderers
+
         converter = converter_cls(
             config=config_dict,
             artifact_dict=model_refs,
             processor_list=config_parser.get_processors(),
-            renderer=config_parser.get_renderer(),
+            renderer=renderers[0],                                      # Initialize converter with first renderer
             llm_service=config_parser.get_llm_service(),
         )
-        rendered = converter(fpath)
-        out_folder = config_parser.get_output_folder(fpath)
-        save_output(rendered, out_folder, base_name)
-        page_count = converter.page_count
+        
+        with converter.filepath_to_str(fpath) as temp_path:             # Build document only once
+            document = converter.build_document(temp_path)
+            page_count = len(document.pages)
+            converter.page_count = page_count
 
+        for renderer_cls_str in renderers:                              # Render and save in all requested formats
+            renderer_cls = strings_to_classes([renderer_cls_str])[0]
+            renderer = converter.resolve_dependencies(renderer_cls)
+            rendered = renderer(document)
+            save_output(rendered, out_folder, base_name)
+            del rendered
+        
         if cli_options.get("debug_print"):
-            logger.debug(f"Converted {fpath}")
-        del rendered
+            logger.debug(f"Converted {fpath} to {len(renderers)} format(s)")
+
         del converter
+        del document
     except Exception as e:
         logger.error(f"Error converting {fpath}: {e}")
         traceback.print_exc()
@@ -201,3 +213,7 @@ def convert_cli(in_folder: str, **kwargs):
         print(
             f"Inferenced {total_pages} pages in {total_time:.2f} seconds, for a throughput of {total_pages / total_time:.2f} pages/sec for chunk {chunk_idx + 1}/{kwargs['num_chunks']}"
         )
+
+if __name__ == "__main__":
+    convert_cli()
+
