@@ -20,3 +20,4 @@ from marker.schema.blocks.toc import TableOfContents
 from marker.schema.blocks.complexregion import ComplexRegion
 from marker.schema.blocks.tablecell import TableCell
 from marker.schema.blocks.reference import Reference
+from marker.schema.blocks.marginal import Marginal

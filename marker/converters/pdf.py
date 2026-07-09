@@ -50,9 +50,55 @@ from marker.processors.llm.llm_handwriting import LLMHandwritingProcessor
 from marker.processors.order import OrderProcessor
 from marker.services.gemini import GoogleGeminiService
 from marker.processors.line_merge import LineMergeProcessor
+from marker.processors.marginal import MarginalProcessor
 from marker.processors.llm.llm_mathblock import LLMMathBlockProcessor
 from marker.processors.llm.llm_page_correction import LLMPageCorrectionProcessor
 from marker.processors.llm.llm_sectionheader import LLMSectionHeaderProcessor
+
+
+# Processors without marginal recognition
+_DEFAULT_PROCESSORS_BASE: Tuple[BaseProcessor, ...] = (
+    OrderProcessor,
+    BlockRelabelProcessor,
+    LineMergeProcessor,
+    BlockquoteProcessor,
+    CodeProcessor,
+    DocumentTOCProcessor,
+    EquationProcessor,
+    FootnoteProcessor,
+    IgnoreTextProcessor,
+    LineNumbersProcessor,
+    ListProcessor,
+    PageHeaderProcessor,
+    SectionHeaderProcessor,
+    TableProcessor,
+    LLMTableProcessor,
+    LLMTableMergeProcessor,
+    LLMFormProcessor,
+    TextProcessor,
+    LLMComplexRegionProcessor,
+    LLMImageDescriptionProcessor,
+    LLMEquationProcessor,
+    LLMHandwritingProcessor,
+    LLMMathBlockProcessor,
+    LLMSectionHeaderProcessor,
+    LLMPageCorrectionProcessor,
+    ReferenceProcessor,
+    BlankPageProcessor,
+    DebugProcessor,
+)
+
+_MARGINAL_INSERT_AFTER = CodeProcessor
+
+def _build_processors_with_marginals() -> Tuple[BaseProcessor, ...]:
+    """Return the processor tuple with MarginalProcessor inserted."""
+    result = list(_DEFAULT_PROCESSORS_BASE)
+    idx = next(
+        (i for i, p in enumerate(result) if p is _MARGINAL_INSERT_AFTER),
+        len(result) - 1,
+    )
+    result.insert(idx + 1, MarginalProcessor)
+    return tuple(result)
 
 
 class PdfConverter(BaseConverter):
@@ -71,36 +117,9 @@ class PdfConverter(BaseConverter):
         bool,
         "Enable higher quality processing with LLMs.",
     ] = False
-    default_processors: Tuple[BaseProcessor, ...] = (
-        OrderProcessor,
-        BlockRelabelProcessor,
-        LineMergeProcessor,
-        BlockquoteProcessor,
-        CodeProcessor,
-        DocumentTOCProcessor,
-        EquationProcessor,
-        FootnoteProcessor,
-        IgnoreTextProcessor,
-        LineNumbersProcessor,
-        ListProcessor,
-        PageHeaderProcessor,
-        SectionHeaderProcessor,
-        TableProcessor,
-        LLMTableProcessor,
-        LLMTableMergeProcessor,
-        LLMFormProcessor,
-        TextProcessor,
-        LLMComplexRegionProcessor,
-        LLMImageDescriptionProcessor,
-        LLMEquationProcessor,
-        LLMHandwritingProcessor,
-        LLMMathBlockProcessor,
-        LLMSectionHeaderProcessor,
-        LLMPageCorrectionProcessor,
-        ReferenceProcessor,
-        BlankPageProcessor,
-        DebugProcessor,
-    )
+
+    default_processors: Tuple[BaseProcessor, ...] = _DEFAULT_PROCESSORS_BASE
+
     default_llm_service: BaseService = GoogleGeminiService
 
     def __init__(
@@ -122,7 +141,11 @@ class PdfConverter(BaseConverter):
         if processor_list is not None:
             processor_list = strings_to_classes(processor_list)
         else:
-            processor_list = self.default_processors
+            # --marginals activates recognition of magrinals.
+            if config.get("marginals", False):
+                processor_list = _build_processors_with_marginals()
+            else:
+                processor_list = self.default_processors
 
         if renderer:
             renderer = strings_to_classes([renderer])[0]

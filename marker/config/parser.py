@@ -81,6 +81,12 @@ class ConfigParser:
             default=None,
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
+        fn = click.option(
+            "--marginals",
+            is_flag=True,
+            default=False,
+            help="Detect marginal numbers in PDFs and render them as <aside>#</aside>.",
+        )(fn)
         return fn
 
     def generate_config_dict(self) -> Dict[str, any]:
@@ -105,6 +111,8 @@ class ConfigParser:
                     config["pdftext_workers"] = 1
                 case "disable_image_extraction":
                     config["extract_images"] = False
+                case "marginals":
+                    config["marginals"] = True
                 case _:
                     config[k] = v
 

@@ -30,6 +30,7 @@ class BlockTypes(str, Enum):
     ComplexRegion = auto()
     TableCell = auto()
     Reference = auto()
+    Marginal = auto()
 
     def __str__(self):
         return self.name
