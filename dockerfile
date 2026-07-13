@@ -1,8 +1,11 @@
-FROM drugflow_marker:base
+FROM carbonsilicon-ai-registry.cn-hangzhou.cr.aliyuncs.com/teamcity/outer_save:marker_with_mol
+ENV PATH /opt/conda/bin:$PATH
+# 激活新环境
+SHELL ["conda", "run", "-n", "myenv", "/bin/bash", "-c"]
 
-RUN pip install marker-pdf==1.6.2 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-# 删除marker-pdf自动安装的torch等依赖，释放空间
-RUN pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu118
+COPY requirements-otel.txt /tmp/requirements-otel.txt
+RUN pip install -r /tmp/requirements-otel.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
-RUN pip install python-docx python-pptx -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+WORKDIR /app
 
+COPY ./ /app/

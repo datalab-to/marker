@@ -25,8 +25,16 @@ import requests
 import psutil
 import uvicorn
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+from tracing import (
+    JsonTraceFormatter,
+    TraceContextMiddleware,
+    activate_trace_from_payload,
+    attach_trace_to_payload,
+)
+from otel_setup import instrument_starlette_app, setup_otel
 
 from marker_main import ExtractionProc
 from marker.utils import send_callback
@@ -38,6 +46,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+setup_otel("gpt-marker")
+
 # 获取北京时区
 beijing_tz = pytz.timezone('Asia/Shanghai')
 
@@ -48,9 +58,9 @@ stop_current_proc = Value("i", 0)
 # 日志配置
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler()],
 )
+logging.getLogger().handlers[0].setFormatter(JsonTraceFormatter("gpt-marker"))
 
 # 信号处理函数
 def signal_handler(signum, frame):
@@ -84,6 +94,7 @@ def regular_document_proc(
     result_queue: multiprocessing.Queue,
     stop_current_proc: Value,
 ):
+    setup_otel("gpt-marker")
     print("init regular parsing model...", flush=True)
     extraction_proc = ExtractionProc()
     extraction_proc.load_models()
@@ -94,6 +105,8 @@ def regular_document_proc(
         params = regular_queue.get()
         if params is None:  # Shutdown signal
             break
+        trace_scope = activate_trace_from_payload(params)
+        trace_scope.__enter__()
         print("Starting regular extraction process")
 
         file = params.get("file", None)
@@ -224,6 +237,7 @@ def regular_document_proc(
                     'progress_text': 'error' + str(e)
                 })
         finally:
+            trace_scope.__exit__(None, None, None)
             stop_current_proc.value = 0
 
 # 分子识别消费者进程
@@ -232,6 +246,7 @@ def molecule_document_proc(
     result_queue: multiprocessing.Queue,
     stop_current_proc: Value,
 ):
+    setup_otel("gpt-marker")
     print("init molecule detection model...", flush=True)
     extraction_proc = ExtractionProc()
     extraction_proc.load_models()
@@ -242,6 +257,8 @@ def molecule_document_proc(
         params = molecule_queue.get()
         if params is None:  # Shutdown signal
             break
+        trace_scope = activate_trace_from_payload(params)
+        trace_scope.__enter__()
         print("Starting molecule detection extraction process")
 
         file = params.get("file", None)
@@ -372,6 +389,7 @@ def molecule_document_proc(
                     'progress_text': 'error' + str(e)
                 })
         finally:
+            trace_scope.__exit__(None, None, None)
             stop_current_proc.value = 0
 
 
@@ -415,7 +433,7 @@ async def document_extract(request):
         extra = json.loads(form.get("extra", "{}"))
         is_testing = extra.get("is_testing", False)
 
-        params = {
+        params = attach_trace_to_payload({
             "file": file_content,
             "file_type": file_type,
             "args": args,
@@ -423,7 +441,7 @@ async def document_extract(request):
             "callback_url": callback_url,
             "mol_detect": mol_detect,
             "skip_layout": skip_layout,
-        }
+        })
 
         if mol_detect:
             molecule_queue.put(params)
@@ -444,11 +462,13 @@ async def ping_resp(request):
 # Starlette应用
 app = Starlette(
     debug=True,
+    middleware=[Middleware(TraceContextMiddleware)],
     routes=[
         Route("/api/v1/document_extract", document_extract, methods=["POST"]),
         Route("/api/ping", ping_resp, methods=["GET"]),
     ],
 )
+app = instrument_starlette_app(app)
 
 # 主函数
 def main():
