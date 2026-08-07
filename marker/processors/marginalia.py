@@ -57,13 +57,18 @@ class MarginaliaProcessor(BaseProcessor):
             if len(text_blocks) < 2:
                 continue  # single-block pages: nothing is "marginal"
 
-            page_top = page.polygon.bbox[1]
+            # Block polygons are 0-origin within the page, so only the page's
+            # height is taken from its polygon - never its origin. Subtracting
+            # page.polygon.bbox[1] would shift every fraction on pages whose
+            # polygon carries a non-zero CropBox origin (the force_ocr path in
+            # PdfProvider), which is why the sibling processors compare raw
+            # block coordinates against page.polygon.height/width directly.
             page_height = page.polygon.height or 1
 
             def yfrac(b):
                 return (
-                    (b.polygon.bbox[1] - page_top) / page_height,
-                    (b.polygon.bbox[3] - page_top) / page_height,
+                    b.polygon.bbox[1] / page_height,
+                    b.polygon.bbox[3] / page_height,
                 )
 
             # Body = text blocks not fully inside either margin zone. A
