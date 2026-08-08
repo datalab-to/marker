@@ -38,3 +38,16 @@ def test_is_blank_image_detects_normal_line():
     gray = np.full((12, 347), 255, np.uint8)
     gray[3:9, ::6] = 60
     assert is_blank_image(Image.fromarray(np.repeat(gray[:, :, None], 3, axis=2))) is False
+
+
+def test_is_blank_image_keeps_noisy_paper_blank():
+    # Scanned paper is never a flat 255: it carries a few grey levels of
+    # sensor/JPEG noise. The blur is what stops that noise from thresholding
+    # as ink, so shrinking the kernel for a small crop must not remove it --
+    # dropping to a 1x1 (i.e. no) blur reports blank paper as text and
+    # defeats filter_blank_lines on exactly the crops this function guards.
+    rng = np.random.default_rng(0)
+    for height, width in ((2, 20), (3, 47), (5, 90), (7, 340)):
+        paper = np.clip(rng.normal(183, 6, (height, width)), 0, 255).astype(np.uint8)
+        crop = Image.fromarray(np.repeat(paper[:, :, None], 3, axis=2))
+        assert is_blank_image(crop) is True, f"{width}x{height} noisy paper"

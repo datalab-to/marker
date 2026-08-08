@@ -27,15 +27,14 @@ def is_blank_image(
     # word) crops to only a few pixels tall, so the fixed 7x7 kernel is as tall
     # as the whole crop and averages every inked stroke with the white margin
     # above and below it. A fully-inked crop then reads as blank and the line
-    # is silently dropped from the output. Keep the original 7x7 kernel for
-    # normal-height lines (min dimension >= 8, i.e. blur_k stays 7) and shrink
-    # it to fit smaller crops so it never spans the crop's full extent.
-    min_dim = min(gray.shape[0], gray.shape[1])
-    blur_k = min(7, min_dim - 1)
-    if blur_k % 2 == 0:
-        blur_k -= 1
-    if blur_k >= 3:
-        gray = cv2.GaussianBlur(gray, (blur_k, blur_k), 0)
+    # is silently dropped from the output. Crops with room for the kernel
+    # (min dimension >= 8) keep the original 7x7 and are bit-for-bit unchanged;
+    # smaller ones drop to 3x3. The kernel is never removed altogether -- the
+    # blur is what keeps scanner noise in a genuinely blank crop from being
+    # thresholded as ink, and an unsmoothed few-pixel crop reports blank paper
+    # as text.
+    blur_k = 7 if min(gray.shape[0], gray.shape[1]) >= 8 else 3
+    gray = cv2.GaussianBlur(gray, (blur_k, blur_k), 0)
 
     # Adaptive threshold (inverse for text as white)
     binarized = cv2.adaptiveThreshold(
