@@ -4,6 +4,7 @@ from marker.processors.llm import PromptData, BaseLLMSimpleBlockProcessor, Block
 
 from marker.schema import BlockTypes
 from marker.schema.document import Document
+from marker.util import strip_code_fence
 
 from typing import Annotated, List
 
@@ -78,7 +79,7 @@ Formatting should be in markdown, with the following rules:
             block.update_metadata(llm_error_count=1)
             return
 
-        markdown = markdown.strip().lstrip("```markdown").rstrip("```").strip()
+        markdown = strip_code_fence(markdown, "markdown")
         block.html = markdown2.markdown(markdown, extras=["tables"])
 
 class HandwritingSchema(BaseModel):
