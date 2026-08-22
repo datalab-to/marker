@@ -34,6 +34,7 @@ from marker.config.printer import CustomClickPrinter
 from marker.logger import configure_logging, get_logger
 from marker.models import create_model_dict
 from marker.output import output_exists, save_output
+from marker.scripts.batch_outcomes import ConversionResult, report_outcomes
 
 configure_logging()
 logger = get_logger()
@@ -72,7 +73,7 @@ def process_single_pdf(args):
     if cli_options.get("skip_existing") and output_exists(
         out_folder, base_name, cli_options.get("output_format")
     ):
-        return page_count
+        return ConversionResult(fpath, skipped=True)
 
     converter_cls = config_parser.get_converter_cls()
     config_dict = config_parser.generate_config_dict()
@@ -106,10 +107,11 @@ def process_single_pdf(args):
     except Exception as e:
         logger.error(f"Error converting {fpath}: {e}")
         traceback.print_exc()
+        return ConversionResult(fpath, error=f"{type(e).__name__}: {e}")
     finally:
         gc.collect()
 
-    return page_count
+    return ConversionResult(fpath, page_count=page_count)
 
 
 @click.command(cls=CustomClickPrinter)
@@ -236,12 +238,15 @@ def convert_cli(in_folder: str, **kwargs):
         maxtasksperchild=kwargs["max_tasks_per_worker"],
     ) as pool:
         pbar = tqdm(total=len(task_args), desc="Processing PDFs", unit="pdf")
-        for page_count in pool.imap_unordered(process_single_pdf, task_args):
+        results = []
+        for result in pool.imap_unordered(process_single_pdf, task_args):
             pbar.update(1)
-            total_pages += page_count
+            total_pages += result.page_count
+            results.append(result)
         pbar.close()
 
     total_time = time.time() - start_time
     print(
         f"Inferenced {total_pages} pages in {total_time:.2f} seconds, for a throughput of {total_pages / total_time:.2f} pages/sec for chunk {chunk_idx + 1}/{kwargs['num_chunks']}"
     )
+    report_outcomes(results, kwargs["output_dir"], chunk_idx, kwargs["num_chunks"])
