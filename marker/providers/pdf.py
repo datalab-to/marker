@@ -15,6 +15,7 @@ from PIL import Image
 from pypdfium2 import PdfiumError, PdfDocument
 
 from marker.providers import BaseProvider, ProviderOutput, Char, ProviderPageLines
+from marker.providers.text_cleanup import clean_extracted_text
 from marker.providers.utils import alphanum_ratio
 from marker.schema import BlockTypes
 from marker.schema.polygon import PolygonBox
@@ -253,7 +254,9 @@ class PdfProvider(BaseProvider):
                         )
                         superscript = span.get("superscript", False)
                         subscript = span.get("subscript", False)
-                        text = self.normalize_spaces(fix_text(span["text"]))
+                        text = self.normalize_spaces(
+                            clean_extracted_text(fix_text(span["text"]))
+                        )
                         if superscript or subscript:
                             text = text.strip()
 
