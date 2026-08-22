@@ -4,7 +4,12 @@ import os
 import pytest
 from PIL import Image
 
-from marker.output import atomic_write_text, output_exists, save_output
+from marker.output import (
+    atomic_write_text,
+    output_exists,
+    save_output,
+    write_failure_report,
+)
 from marker.renderers.markdown import MarkdownOutput
 
 
@@ -77,6 +82,28 @@ def test_atomic_write_text_replaces_an_existing_file(tmp_path):
 
     assert target.read_text() == "fresh"
     assert os.listdir(tmp_path) == ["doc.md"]
+
+
+def test_write_failure_report(tmp_path):
+    failures = [
+        {"file": "/in/a.pdf", "error": "PdfiumError: Incorrect password"},
+        {"file": "/in/b.pdf", "error": "ValueError: no pages"},
+    ]
+
+    path = write_failure_report(str(tmp_path), failures)
+
+    assert json.loads(open(path).read()) == failures
+    assert os.path.basename(path) == "conversion_failures.json"
+
+
+def test_write_failure_report_names_the_chunk(tmp_path):
+    path = write_failure_report(
+        str(tmp_path),
+        [{"file": "/in/a.pdf", "error": "boom"}],
+        fname="conversion_failures_chunk_2.json",
+    )
+
+    assert os.path.basename(path) == "conversion_failures_chunk_2.json"
 
 
 def test_atomic_write_keeps_the_usual_file_permissions(tmp_path):

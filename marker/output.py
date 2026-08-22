@@ -2,7 +2,7 @@ import io
 import json
 import os
 import uuid
-from typing import Optional
+from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
@@ -107,6 +107,17 @@ def atomic_write_bytes(path: str, content: bytes) -> None:
 
 def atomic_write_text(path: str, content: str) -> None:
     atomic_write_bytes(path, content.encode(settings.OUTPUT_ENCODING, errors="replace"))
+
+
+def write_failure_report(
+    output_dir: str,
+    failures: List[Dict[str, str]],
+    fname: str = "conversion_failures.json",
+) -> str:
+    """Record which inputs failed, so a batch can be re-run against the list."""
+    path = os.path.join(output_dir, fname)
+    atomic_write_text(path, json.dumps(failures, indent=2))
+    return path
 
 
 def text_from_rendered(rendered: BaseModel):
