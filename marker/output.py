@@ -1,5 +1,8 @@
+import io
 import json
 import os
+import uuid
+from typing import Optional
 
 from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
@@ -47,12 +50,63 @@ def json_to_html(block: JSONBlockOutput | BlockOutput):
     return str(BeautifulSoup(_splice_json_html(block), "html.parser"))
 
 
-def output_exists(output_dir: str, fname_base: str):
-    exts = ["md", "html", "json"]
-    for ext in exts:
-        if os.path.exists(os.path.join(output_dir, f"{fname_base}.{ext}")):
-            return True
-    return False
+# The file extension `save_output` writes for each `--output_format`.
+OUTPUT_FORMAT_EXTENSIONS = {
+    "markdown": "md",
+    "html": "html",
+    "json": "json",
+    "chunks": "json",
+}
+
+
+def output_exists(
+    output_dir: str, fname_base: str, output_format: Optional[str] = None
+) -> bool:
+    """Whether a complete conversion is already on disk.
+
+    `output_format` matters because a markdown conversion says nothing about
+    whether the json one was ever run; without it, every known extension counts.
+    The metadata file is written last, so its absence means an earlier run was
+    interrupted partway through and left outputs that should not be reused.
+    """
+    if not os.path.exists(os.path.join(output_dir, f"{fname_base}_meta.json")):
+        return False
+
+    format_ext = OUTPUT_FORMAT_EXTENSIONS.get(output_format)
+    exts = (
+        [format_ext]
+        if format_ext
+        else list(dict.fromkeys(OUTPUT_FORMAT_EXTENSIONS.values()))
+    )
+    return any(
+        os.path.exists(os.path.join(output_dir, f"{fname_base}.{ext}")) for ext in exts
+    )
+
+
+def atomic_write_bytes(path: str, content: bytes) -> None:
+    """Write a file that is never observable in a half-written state.
+
+    An output truncated by an interrupted run is indistinguishable from a
+    finished one, which is exactly what `output_exists` would then skip over.
+    """
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    # Named rather than `mkstemp`ed, which would hand the finished file the
+    # 0600 permissions of a temporary one instead of the usual umask default.
+    tmp_path = os.path.join(
+        directory, f".{os.path.basename(path)}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def atomic_write_text(path: str, content: str) -> None:
+    atomic_write_bytes(path, content.encode(settings.OUTPUT_ENCODING, errors="replace"))
 
 
 def text_from_rendered(rendered: BaseModel):
@@ -78,25 +132,19 @@ def convert_if_not_rgb(image: Image.Image) -> Image.Image:
     return image
 
 
-def save_output(rendered: BaseModel, output_dir: str, fname_base: str):
+def save_output(rendered: BaseModel, output_dir: str, fname_base: str) -> None:
     text, ext, images = text_from_rendered(rendered)
-    text = text.encode(settings.OUTPUT_ENCODING, errors="replace").decode(
-        settings.OUTPUT_ENCODING
-    )
 
-    with open(
-        os.path.join(output_dir, f"{fname_base}.{ext}"),
-        "w+",
-        encoding=settings.OUTPUT_ENCODING,
-    ) as f:
-        f.write(text)
-    with open(
-        os.path.join(output_dir, f"{fname_base}_meta.json"),
-        "w+",
-        encoding=settings.OUTPUT_ENCODING,
-    ) as f:
-        f.write(json.dumps(rendered.metadata, indent=2))
+    atomic_write_text(os.path.join(output_dir, f"{fname_base}.{ext}"), text)
 
     for img_name, img in images.items():
         img = convert_if_not_rgb(img)  # RGBA images can't save as JPG
-        img.save(os.path.join(output_dir, img_name), settings.OUTPUT_IMAGE_FORMAT)
+        buffer = io.BytesIO()
+        img.save(buffer, settings.OUTPUT_IMAGE_FORMAT)
+        atomic_write_bytes(os.path.join(output_dir, img_name), buffer.getvalue())
+
+    # Written last, so its presence marks a conversion that reached disk whole.
+    atomic_write_text(
+        os.path.join(output_dir, f"{fname_base}_meta.json"),
+        json.dumps(rendered.metadata, indent=2),
+    )
