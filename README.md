@@ -160,7 +160,9 @@ marker /path/to/input/folder
 - `--workers` is the number of conversion workers to run simultaneously.  This is automatically set by default, but you can increase it to increase throughput, at the cost of more CPU usage.  All workers share a single inference server, which the parent process spawns.
 - The parent budgets total VLM concurrency automatically: it reads the server's capacity and splits it across workers (aggregate in-flight ≈ 1.5× capacity), so adding workers never over-queues the server.  Set `SURYA_INFERENCE_PARALLEL` yourself only to override.
 - With `--disable_ocr` no inference server is started at all, and the pool is sized purely by CPU cores.
-- `--skip_existing` skips input files that already have output in `--output_dir` (resume a run); `--max_files N` caps how many files are converted; `--disable_multiprocessing` runs everything in one process.
+- `--skip_existing` skips files that already have complete output *in the format you are converting to*.  Converting a folder to markdown and then rerunning with `--output_format json --skip_existing` converts the files again, rather than skipping them because a `.md` is sitting beside them.
+- `--max_files N` caps how many files are converted; `--disable_multiprocessing` runs everything in one process.
+- If any file fails, marker writes `conversion_failures.json` into the output directory, listing each failed path with its error, and logs how many failed and how many were skipped.  The file is a list you can feed back in to retry only what failed.  Chunked runs name it `conversion_failures_chunk_N.json` so they do not overwrite each other.
 
 ### Batch sizing cheat sheet (e.g. 1000 docs)
 
@@ -445,6 +447,7 @@ There are some settings that you may find useful if things aren't working the wa
 - Make sure to set `force_ocr` if you see garbled text - this will re-OCR the document.
 - `TORCH_DEVICE` - set this to force the small local models (ocr error detection) onto a given torch device.  The VLM runs in the inference server - control its placement with `SURYA_INFERENCE_BACKEND` / `VLLM_GPUS`.
 - If you're getting out of memory errors, decrease worker count.  You can also try splitting up long PDFs into multiple files.
+- A file that cannot be a PDF is now named as such before any parsing starts - an empty file, or a download that saved an error page under a `.pdf` name, reports that rather than a data format error from inside PDFium.  A password-protected PDF says it is encrypted; marker does not ask for a password, so supply a decrypted copy.
 
 ## Debugging
 
