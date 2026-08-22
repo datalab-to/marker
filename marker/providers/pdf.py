@@ -15,6 +15,11 @@ from PIL import Image
 from pypdfium2 import PdfiumError, PdfDocument
 
 from marker.providers import BaseProvider, ProviderOutput, Char, ProviderPageLines
+from marker.providers.preflight import (
+    UnreadablePdfError,
+    preflight_pdf,
+    unreadable_pdf_message,
+)
 from marker.providers.text_cleanup import clean_extracted_text
 from marker.providers.utils import alphanum_ratio
 from marker.schema import BlockTypes
@@ -92,6 +97,8 @@ class PdfProvider(BaseProvider):
         super().__init__(filepath, config)
 
         self.filepath = filepath
+        preflight_pdf(filepath)
+
         self.raw_pdftext_pages: Dict[int, dict] = {}
 
         with self.get_doc() as doc:
@@ -118,7 +125,14 @@ class PdfProvider(BaseProvider):
     def get_doc(self):
         doc = None
         try:
-            doc = pdfium.PdfDocument(self.filepath)
+            try:
+                doc = pdfium.PdfDocument(self.filepath)
+            except PdfiumError as e:
+                # PDFium says the same thing about a damaged document and a
+                # password-protected one, and neither is worth a traceback.
+                raise UnreadablePdfError(
+                    unreadable_pdf_message(self.filepath, e)
+                ) from e
 
             # Must be called on the parent pdf, before retrieving pages to render correctly
             if self.flatten_pdf:
