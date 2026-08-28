@@ -390,6 +390,7 @@ When running with the `--use_llm` flag, you have a choice of services you can us
 - `OpenAI` - this supports any openai-like endpoint. You can configure `--openai_api_key`, `--openai_model`, and `--openai_base_url`. To use it, set `--llm_service=marker.services.openai.OpenAIService`.
 - `Azure OpenAI` - this uses the Azure OpenAI service. You can configure `--azure_endpoint`, `--azure_api_key`, and `--deployment_name`. To use it, set `--llm_service=marker.services.azure_openai.AzureOpenAIService`.
 - `OpenRouter` - this uses [OpenRouter](https://openrouter.ai)'s OpenAI-compatible API.  You can configure `--openrouter_api_key` (or the `OPENROUTER_API_KEY` env var), `--openrouter_model` (default `google/gemini-3.5-flash`), and `--openrouter_base_url`.  To use it, set `--llm_service=marker.services.openrouter.OpenRouterService`.
+- `LiteLLM` - this routes through [LiteLLM](https://github.com/BerriAI/litellm), giving access to 100+ providers (including Bedrock, Vertex, and Azure, whose auth is not OpenAI-compatible) or a self-hosted LiteLLM proxy from a single `provider/model` string.  You can configure `--litellm_model` (default `gemini/gemini-2.5-flash`), `--litellm_api_key` (leave unset to use the provider's own env var), and `--litellm_base_url` (e.g. a proxy at `http://localhost:4000`).  To use it, set `--llm_service=marker.services.litellm.LiteLLMService`.
 
 These services may have additional optional configuration as well - you can see it by viewing the classes.
 

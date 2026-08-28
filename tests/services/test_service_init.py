@@ -6,6 +6,7 @@ from marker.services.ollama import OllamaService
 from marker.services.vertex import GoogleVertexService
 from marker.services.openai import OpenAIService
 from marker.services.azure_openai import AzureOpenAIService
+from marker.services.litellm import LiteLLMService
 
 
 @pytest.mark.output_format("markdown")
@@ -83,3 +84,17 @@ def test_llm_openai(pdf_converter: PdfConverter, temp_doc):
 def test_llm_azure_openai(pdf_converter: PdfConverter, temp_doc):
     assert pdf_converter.artifact_dict["llm_service"] is not None
     assert isinstance(pdf_converter.llm_service, AzureOpenAIService)
+
+
+@pytest.mark.output_format("markdown")
+@pytest.mark.config(
+    {
+        "page_range": [0],
+        "use_llm": True,
+        "llm_service": "marker.services.litellm.LiteLLMService",
+        "litellm_api_key": "test",
+    }
+)
+def test_llm_litellm(pdf_converter: PdfConverter, temp_doc):
+    assert pdf_converter.artifact_dict["llm_service"] is not None
+    assert isinstance(pdf_converter.llm_service, LiteLLMService)
