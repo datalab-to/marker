@@ -8,7 +8,7 @@ from marker.schema.blocks import SectionHeader
 from marker.schema.document import Document
 from marker.schema.registry import register_block_class
 from marker.schema.text import Line
-from tests.utils import setup_pdf_provider
+from tests.utils import require_documents, setup_pdf_provider
 
 
 class NewSectionHeader(SectionHeader):
@@ -43,6 +43,8 @@ def test_overriding_mp():
     }
 
     pdf_list = ["adversarial.pdf", "adversarial_rot.pdf"]
+    # Check up front: a skip raised inside a worker comes back as a failure.
+    require_documents(*pdf_list)
 
     with mp.Pool(processes=2) as pool:
         results = pool.starmap(get_lines, [(pdf, config) for pdf in pdf_list])
