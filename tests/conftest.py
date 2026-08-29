@@ -3,7 +3,6 @@ from typing import Dict, Type
 
 from PIL import Image, ImageDraw
 
-import datasets
 import pytest
 
 from marker.builders.document import DocumentBuilder
@@ -22,6 +21,12 @@ from marker.renderers.markdown import MarkdownRenderer
 from marker.renderers.json import JSONRenderer
 from marker.schema.registry import register_block_class
 from marker.util import classes_to_strings, strings_to_classes
+from tests.dataset import (
+    DEFAULT_DOCUMENT,
+    DocumentUnavailable,
+    hf_dataset,
+    load_document,
+)
 
 
 @pytest.fixture(scope="session")
@@ -65,19 +70,32 @@ def config(request):
 
 @pytest.fixture(scope="session")
 def pdf_dataset():
-    return datasets.load_dataset("datalab-to/pdfs", split="train")
+    """The raw sample-document dataset from the HuggingFace Hub.
+
+    Skips, rather than erroring, when the gated dataset is unreachable. Prefer
+    `temp_doc` for a single document -- it also accepts documents from the
+    local directory, so it does not need Hub access at all.
+    """
+    dataset, reason = hf_dataset()
+    if dataset is None:
+        pytest.skip(reason)
+    return dataset
 
 
 @pytest.fixture(scope="function")
-def temp_doc(request, pdf_dataset):
+def temp_doc(request):
+    """A sample document, named by the `filename` marker, on disk."""
     filename_mark = request.node.get_closest_marker("filename")
-    filename = filename_mark.args[0] if filename_mark else "adversarial.pdf"
+    filename = filename_mark.args[0] if filename_mark else DEFAULT_DOCUMENT
 
-    idx = pdf_dataset["filename"].index(filename)
+    try:
+        content = load_document(filename)
+    except DocumentUnavailable as exc:
+        pytest.skip(str(exc))
+
     suffix = filename.split(".")[-1]
-
     temp_pdf = tempfile.NamedTemporaryFile(suffix=f".{suffix}")
-    temp_pdf.write(pdf_dataset["pdf"][idx])
+    temp_pdf.write(content)
     temp_pdf.flush()
     yield temp_pdf
 
