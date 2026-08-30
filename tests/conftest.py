@@ -1,10 +1,8 @@
 import tempfile
 from typing import Dict, Type
 
-from PIL import Image, ImageDraw
-
-import datasets
 import pytest
+from PIL import Image, ImageDraw
 
 from marker.builders.document import DocumentBuilder
 from marker.builders.layout import LayoutBuilder
@@ -22,6 +20,7 @@ from marker.renderers.markdown import MarkdownRenderer
 from marker.renderers.json import JSONRenderer
 from marker.schema.registry import register_block_class
 from marker.util import classes_to_strings, strings_to_classes
+from tests.utils import PdfFixtureDatasetUnavailable, load_pdf_fixture_dataset
 
 
 @pytest.fixture(scope="session")
@@ -63,9 +62,16 @@ def config(request):
     return config
 
 
+def load_or_skip_pdf_dataset():
+    try:
+        return load_pdf_fixture_dataset()
+    except PdfFixtureDatasetUnavailable as exc:
+        pytest.skip(str(exc))
+
+
 @pytest.fixture(scope="session")
 def pdf_dataset():
-    return datasets.load_dataset("datalab-to/pdfs", split="train")
+    return load_or_skip_pdf_dataset()
 
 
 @pytest.fixture(scope="function")
