@@ -30,6 +30,7 @@ dependencies = [
     "google-genai>=1.40.0,<3",
     "anthropic>=0.69.0,<1",
     "openai>=2.2.0,<3",
+    "litellm>=1.89.0,<2",
     "scikit-learn>=1.6.1,<2",
 ]
 
