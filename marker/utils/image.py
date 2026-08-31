@@ -21,6 +21,15 @@ def is_blank_image(
             return True
 
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    # adaptiveThreshold blockSize is 31. On crops smaller than that — almost
+    # always the last one- or two-word line of a paragraph — the 7x7 blur plus
+    # a 31-pixel window wipes the ink and the line is deleted as "blank".
+    if min(gray.shape[:2]) < 31:
+        _, binarized = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+        return not bool(binarized.any())
+
     gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
     # Adaptive threshold (inverse for text as white)
