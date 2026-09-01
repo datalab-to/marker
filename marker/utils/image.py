@@ -21,7 +21,20 @@ def is_blank_image(
             return True
 
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    gray = cv2.GaussianBlur(gray, (7, 7), 0)
+
+    # Scale the blur kernel to the crop before smoothing. The short final line
+    # of a paragraph (a one- or two-word widow, or the tail of a hyphenated
+    # word) crops to only a few pixels tall, so the fixed 7x7 kernel is as tall
+    # as the whole crop and averages every inked stroke with the white margin
+    # above and below it. A fully-inked crop then reads as blank and the line
+    # is silently dropped from the output. Crops with room for the kernel
+    # (min dimension >= 8) keep the original 7x7 and are bit-for-bit unchanged;
+    # smaller ones drop to 3x3. The kernel is never removed altogether -- the
+    # blur is what keeps scanner noise in a genuinely blank crop from being
+    # thresholded as ink, and an unsmoothed few-pixel crop reports blank paper
+    # as text.
+    blur_k = 7 if min(gray.shape[0], gray.shape[1]) >= 8 else 3
+    gray = cv2.GaussianBlur(gray, (blur_k, blur_k), 0)
 
     # Adaptive threshold (inverse for text as white)
     binarized = cv2.adaptiveThreshold(
