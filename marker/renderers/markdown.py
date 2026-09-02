@@ -309,6 +309,8 @@ class MarkdownRenderer(HTMLRenderer):
         markdown = self.md_cls.convert(full_html)
         markdown = cleanup_text(markdown)
 
+        truncated = self.detect_truncation(full_html, markdown)
+
         # Ensure we set the correct blanks for pagination markers
         if self.paginate_output:
             if not markdown.startswith("\n\n"):
@@ -316,8 +318,42 @@ class MarkdownRenderer(HTMLRenderer):
             if markdown.endswith(self.page_separator):
                 markdown += "\n\n"
 
+        metadata = self.generate_document_metadata(document, document_output)
+        metadata["markdown_truncated"] = truncated
+
         return MarkdownOutput(
             markdown=markdown,
             images=images,
-            metadata=self.generate_document_metadata(document, document_output),
+            metadata=metadata,
         )
+
+    def detect_truncation(self, full_html: str, markdown: str) -> bool:
+        """Warn when the markdownify pass silently dropped most of the document.
+
+        markdownify re-parses the whole assembled HTML through BeautifulSoup.
+        On some malformed markup (an unclosed ``<script>``/``<style>``, an
+        unterminated comment, ...) the parser treats everything after the bad
+        token as raw CDATA/comment text and discards it, returning a truncated
+        string without raising. The run then exits 0, so a 90% data loss is
+        indistinguishable from success at the API boundary.
+
+        The source length is measured by stripping tags with a regex rather
+        than an HTML parser, so the swallowed tail is still counted; a large
+        shortfall against the rendered markdown flags the truncation both in
+        the logs and in the returned metadata.
+        """
+        source_len = len(re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", full_html)))
+        markdown_len = len(re.sub(r"\s+", "", markdown))
+        if source_len > 500 and markdown_len < source_len * 0.5:
+            logger.warning(
+                "Markdown render retained only %d of ~%d source characters "
+                "(%.0f%%); markdownify's HTML parser likely discarded the tail "
+                "of the document on malformed markup (e.g. an unclosed "
+                "<script>/<style>, comment, or attribute quote). The returned "
+                "markdown is probably truncated.",
+                markdown_len,
+                source_len,
+                100.0 * markdown_len / max(source_len, 1),
+            )
+            return True
+        return False
