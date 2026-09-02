@@ -84,7 +84,6 @@ class PdfConverter(BaseConverter):
         LineMergeProcessor,
         BlockquoteProcessor,
         CodeProcessor,
-        DocumentTOCProcessor,
         EquationProcessor,
         FootnoteProcessor,
         IgnoreTextProcessor,
@@ -108,6 +107,7 @@ class PdfConverter(BaseConverter):
         ReferenceProcessor,
         BlankPageProcessor,
         DebugProcessor,
+        DocumentTOCProcessor,
     )
     default_llm_service: BaseService = GoogleGeminiService
 
