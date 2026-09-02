@@ -1,3 +1,4 @@
+import html as html_lib
 from typing import List
 
 from marker.schema import BlockTypes
@@ -33,5 +34,5 @@ class TableCell(Block):
             tag += f' data-block-id="{self.id}"'
         if self.text_lines is None:
             self.text_lines = []
-        text = "<br>".join(self.text_lines)
+        text = "<br>".join(html_lib.escape(line) for line in self.text_lines)
         return f"{tag}>{text}</{tag_cls}>"
