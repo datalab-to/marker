@@ -155,31 +155,18 @@ class PdfProvider(BaseProvider):
             set_flags.add("Plain")
 
         formats = set()
-        if set_flags == {"Symbolic", "Italic"} or set_flags == {
-            "Symbolic",
-            "Italic",
-            "UseExternAttr",
-        }:
+
+        # Check for italic and bold flags in any combination
+        # Fix: Removed early return for Symbolic+Italic - it incorrectly stripped formatting
+        if set_flags & {"Italic"}:
+            formats.add("italic")
+        if set_flags & {"ForceBold"}:
+            formats.add("bold")
+
+        # Only add plain if no specific formatting was detected
+        if not formats:
             formats.add("plain")
-        elif set_flags == {"UseExternAttr"}:
-            formats.add("plain")
-        elif set_flags == {"Plain"}:
-            formats.add("plain")
-        else:
-            if set_flags & {"Italic"}:
-                formats.add("italic")
-            if set_flags & {"ForceBold"}:
-                formats.add("bold")
-            if set_flags & {
-                "FixedPitch",
-                "Serif",
-                "Script",
-                "Nonsymbolic",
-                "AllCap",
-                "SmallCap",
-                "UseExternAttr",
-            }:
-                formats.add("plain")
+
         return formats
 
     def font_names_to_format(self, font_name: str | None) -> Set[str]:
@@ -187,10 +174,24 @@ class PdfProvider(BaseProvider):
         if font_name is None:
             return formats
 
-        if "bold" in font_name.lower():
+        font_lower = font_name.lower()
+
+        bold_indicators = ["bold", "bd", "black", "heavy"]
+        if any(bold in font_lower for bold in bold_indicators):
             formats.add("bold")
-        if "ital" in font_name.lower():
+
+        italic_indicators = [
+            "ital",
+            "oblique",
+            "slant",
+            "it",
+            "cursiva",
+            "corsivo",
+            "kursiv",
+        ]
+        if any(indicator in font_lower for indicator in italic_indicators):
             formats.add("italic")
+
         return formats
 
     @staticmethod
