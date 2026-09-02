@@ -34,12 +34,10 @@ class OllamaService(BaseService):
         url = f"{self.ollama_base_url}/api/generate"
         headers = {"Content-Type": "application/json"}
 
+        # Pass the full JSON schema through so nested models keep their
+        # ``$defs``/``$ref`` definitions; hand-picking ``properties``/``required``
+        # drops those and Ollama rejects the resulting structured output.
         schema = response_schema.model_json_schema()
-        format_schema = {
-            "type": "object",
-            "properties": schema["properties"],
-            "required": schema["required"],
-        }
 
         image_bytes = self.format_image_for_llm(image)
 
@@ -47,9 +45,14 @@ class OllamaService(BaseService):
             "model": self.ollama_model,
             "prompt": prompt,
             "stream": False,
-            "format": format_schema,
-            "images": image_bytes,
+            "format": schema,
         }
+
+        # Only send ``images`` for multimodal prompts. Text-only processors
+        # produce an empty list, and some Ollama backends reject that as a
+        # malformed multimodal request, corrupting the response.
+        if image_bytes:
+            payload["images"] = image_bytes
 
         try:
             response = requests.post(url, json=payload, headers=headers)
