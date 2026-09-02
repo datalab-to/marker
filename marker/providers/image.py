@@ -25,9 +25,10 @@ class ImageProvider(BaseProvider):
         if self.page_range is None:
             self.page_range = range(self.image_count)
 
-        assert max(self.page_range) < self.image_count and min(self.page_range) >= 0, (
-            f"Invalid page range, values must be between 0 and {len(self.doc) - 1}.  Min of provided page range is {min(self.page_range)} and max is {max(self.page_range)}."
-        )
+        if max(self.page_range) >= self.image_count or min(self.page_range) < 0:
+            raise ValueError(
+                f"Invalid page range, values must be between 0 and {self.image_count - 1}.  Min of provided page range is {min(self.page_range)} and max is {max(self.page_range)}."
+            )
 
         self.page_bboxes = {
             i: [0, 0, self.images[i].size[0], self.images[i].size[1]]
