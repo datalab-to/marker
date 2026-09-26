@@ -20,7 +20,14 @@ def escape_dollars(text):
     return text.replace("$", r"\$")
 
 
+# C0 control bytes (except \t, \n, \r) are never legitimate markdown. They
+# leak from no-ToUnicode font fallbacks, where punctuation glyph codes map
+# to unprintable code points (a comma glyph surfacing as U+000C).
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
 def cleanup_text(full_text):
+    full_text = CONTROL_CHARACTERS.sub("", full_text)
     full_text = re.sub(r"\n{3,}", "\n\n", full_text)
     full_text = re.sub(r"(\n\s){3,}", "\n\n", full_text)
     return full_text.strip()

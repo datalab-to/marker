@@ -1,3 +1,4 @@
+import re
 from typing import Annotated, List, Tuple
 
 import numpy as np
@@ -13,6 +14,66 @@ from marker.schema.groups.page import PageGroup
 from marker.settings import settings
 from marker.util import matrix_intersection_area
 from marker.utils.image import is_blank_image
+
+
+# Strong deterministic signatures of "lying font" extraction damage: CID
+# subset fonts without a ToUnicode CMap whose embedded glyph names disagree
+# with the drawn outlines (a glyph named "exclam" that draws small-cap "A").
+# Extractors that trust glyph names emit text shifted one ASCII band down
+# (7HAT=WHAT, 4HE=THE, 9OU=YOU), fi/fl ligature glyphs glued into cap runs
+# (CLARIlED, lELD, INmUENCES), quote/ellipsis glyph codes (hWRONGv,
+# GOVERNMENTv, CONSCIENCEx-UST), and punctuation glyph codes surfacing as raw
+# C0 control bytes (a comma as U+000C). The prose-trained ocr error model
+# rates this text "good" - it is mostly valid English words in order - so a
+# deterministic check is needed to route these blocks to OCR.
+_DETERMINISTIC_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_DETERMINISTIC_TOKEN_EXCEPTION = re.compile(r"[0-9]{1,2}(?:ST|ND|RD|TH|AM|PM)")
+_DETERMINISTIC_TOKEN_PATTERNS = (
+    # Glyph codes one ASCII band down: 4HE=THE, 7HAT=WHAT, 5NDER=UNDER.
+    # Ordinal and clock-time suffixes (1ST, 9AM) and URL percent escapes
+    # (%2FTXT) are excluded in has_deterministic_garble; a single short
+    # token (4GB) is not enough - real damage shifts several tokens in the
+    # same run.
+    re.compile(r"(?<!%)\b[0-9][A-Z]{2,}\b"),
+    # fi/fl ligature glyphs glued into cap runs: CLARIlED, lELD, INmUENCES.
+    re.compile(r"\b[A-Z]{2,}[lm][A-Z]+\b|\bl[A-Z]{2,}\b"),
+    # Quote/ellipsis glyph codes: hANALYSISv, GOVERNMENTv, CONSCIENCEx-UST.
+    re.compile(r"\bh[A-Z]{4,}|[A-Z]{2,}v\b|\b[A-Z]{3,}x(?:-[A-Z]{2,})?"),
+)
+# Bullet glyphs flattened into run-on "s " text: "s item s item s item".
+# Three or more, so a lone " s word" (e.g. German seconds, "0,3 s wird")
+# never triggers a re-OCR.
+_DETERMINISTIC_FLATTENED_BULLET = re.compile(r"(?:^|[\s.;:()])s [A-Za-z0-9(]")
+_DETERMINISTIC_MIN_FLATTENED_BULLETS = 3
+
+
+def has_deterministic_garble(text: str) -> bool:
+    """Detect lying-font extraction damage that needs re-OCR, no model needed.
+
+    Tuned against a 353-document extraction corpus (English and German
+    prose, standards, tables): apart from two product-name lines
+    ("3DEXPERIENCE"), nothing clean triggers it. On the damaged document
+    that motivated it, every one of the 18 bad text blocks (out of 621)
+    is caught.
+    """
+    if _DETERMINISTIC_CONTROL_CHARS.search(text):
+        return True
+    tokens = [
+        token
+        for token in _DETERMINISTIC_TOKEN_PATTERNS[0].findall(text)
+        if not _DETERMINISTIC_TOKEN_EXCEPTION.fullmatch(token)
+    ]
+    if len(tokens) >= 2 or any(len(token) >= 5 for token in tokens):
+        return True
+    if _DETERMINISTIC_TOKEN_PATTERNS[1].search(text):
+        return True
+    if _DETERMINISTIC_TOKEN_PATTERNS[2].search(text):
+        return True
+    return (
+        len(_DETERMINISTIC_FLATTENED_BULLET.findall(text))
+        >= _DETERMINISTIC_MIN_FLATTENED_BULLETS
+    )
+
 
 
 class LineBuilder(BaseBuilder):
@@ -112,6 +173,14 @@ class LineBuilder(BaseBuilder):
         "Minimum block text length before trusting the ocr error model's",
         "garbled verdict. Short labels can't be judged reliably.",
     ] = 50
+    deterministic_garble_filter: Annotated[
+        bool,
+        "Deterministically re-OCR blocks whose embedded text carries strong",
+        '"lying font" damage signatures: C0 control bytes, or glyph-code-shifted',
+        "tokens like 7HAT/lELD/hWRONGv from no-ToUnicode CID fonts. These never",
+        "reach the ocr error model, which rates such text as good because it",
+        "is mostly valid English words in the right order.",
+    ] = True
     block_garbled_check_min_page_score: Annotated[
         float,
         "Only run the (expensive) per-block garbled-text recheck on pages whose",
@@ -394,6 +463,8 @@ class LineBuilder(BaseBuilder):
         is unreliable on short labels. We only OCR an empty block if it is a
         substantial region with actual ink (a genuine scanned/image element),
         and only trust the garbled signal on blocks with enough text to judge.
+        Strong lying-font signatures (control bytes, glyph-code-shifted
+        tokens) are checked deterministically and always trigger re-OCR.
         """
         # Collect candidate blocks across all pdftext pages, then batch the
         # garbled-text check through the ocr error model.
@@ -451,6 +522,11 @@ class LineBuilder(BaseBuilder):
                     )
                     if is_blank_image(page_image.crop(crop_bbox)):
                         continue
+                    block.text_extraction_method = "surya"
+                elif self.deterministic_garble_filter and has_deterministic_garble(text):
+                    # Lying-font damage is deterministic - flag it even when
+                    # the page-level model cleared the page or the block is
+                    # shorter than the ocr error model trusts.
                     block.text_extraction_method = "surya"
                 elif check_garbled and len(text) >= self.min_garbled_text_chars:
                     garbled_candidates.append((block, text))
