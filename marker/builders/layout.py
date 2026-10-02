@@ -17,6 +17,16 @@ from marker.schema.registry import get_block_class
 
 logger = get_logger()
 
+# Block types that are all rendered as HTML tables by the TableProcessor. When
+# the layout model emits two heavily-overlapping boxes from this set for one
+# region (e.g. a questionnaire tagged as both Table and Form), both render and
+# the same table is duplicated in the output.
+TABLE_FAMILY_TYPES = (
+    BlockTypes.Table,
+    BlockTypes.Form,
+    BlockTypes.TableOfContents,
+)
+
 
 class LayoutBuilder(BaseBuilder):
     """
@@ -72,6 +82,13 @@ class LayoutBuilder(BaseBuilder):
     max_expand_frac: Annotated[
         float, "The maximum fraction to expand the layout box bounds by"
     ] = 0.05
+    table_merge_overlap_pct: Annotated[
+        float,
+        "Two table-family layout boxes (Table/Form/TableOfContents) whose mutual "
+        "overlap fraction both exceed this value are treated as duplicate "
+        "detections of the same region; the lower-confidence one is dropped so "
+        "the region is not rendered as a table twice.",
+    ] = 0.75
 
     def __init__(
         self,
@@ -107,7 +124,58 @@ class LayoutBuilder(BaseBuilder):
         else:
             layout_results = self.surya_layout(document.pages, provider)
         self.add_blocks_to_pages(document.pages, layout_results)
+        self.merge_overlapping_table_blocks(document)
         self.expand_layout_blocks(document)
+
+    def merge_overlapping_table_blocks(self, document: Document):
+        """Drop duplicate table-family detections. The layout model can tag one
+        region as both a Table and a Form (near-identical boxes); both are
+        rendered as HTML tables by the TableProcessor, so the same table appears
+        twice in the output. When two table-family boxes mutually overlap above
+        table_merge_overlap_pct, keep the higher-confidence one and remove the
+        other."""
+        for page in document.pages:
+            if not page.structure:
+                continue
+
+            table_blocks = [
+                block
+                for block in (document.get_block(bid) for bid in page.structure)
+                if block is not None and block.block_type in TABLE_FAMILY_TYPES
+            ]
+
+            remove_ids = []
+            for i, block in enumerate(table_blocks):
+                if block.id in remove_ids:
+                    continue
+                for other in table_blocks[i + 1 :]:
+                    if other.id in remove_ids:
+                        continue
+                    if (
+                        block.polygon.intersection_pct(other.polygon)
+                        >= self.table_merge_overlap_pct
+                        and other.polygon.intersection_pct(block.polygon)
+                        >= self.table_merge_overlap_pct
+                    ):
+                        loser = (
+                            other
+                            if self._layout_confidence(block)
+                            >= self._layout_confidence(other)
+                            else block
+                        )
+                        loser.removed = True
+                        remove_ids.append(loser.id)
+                        if loser.id == block.id:
+                            break
+
+            if remove_ids:
+                page.remove_structure_items(remove_ids)
+
+    @staticmethod
+    def _layout_confidence(block) -> float:
+        if block.top_k:
+            return block.top_k.get(block.block_type, 1.0)
+        return 1.0
 
     def forced_layout(self, pages: List[PageGroup]) -> List[LayoutResult]:
         layout_results = []
