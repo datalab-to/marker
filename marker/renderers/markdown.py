@@ -23,7 +23,30 @@ def escape_dollars(text):
 def cleanup_text(full_text):
     full_text = re.sub(r"\n{3,}", "\n\n", full_text)
     full_text = re.sub(r"(\n\s){3,}", "\n\n", full_text)
+
+    # 1. Ensure unclosed anchor spans <span id="..."> are properly closed with </span>
+    full_text = re.sub(
+        r'(<span\s+id=[\'"][^\'"]+[\'"]>)(?!</span>)', r"\1</span>", full_text
+    )
+
+    # 2. Leading dot before citation numbers inside link: [.8,9](#page-...) -> .[8,9](#page-...)
+    full_text = re.sub(
+        r"\[\s*\.\s*(\d[\d,\s\-]*)\]\((#[^\)]+)\)", r".[\1](\2)", full_text
+    )
+
+    # 3. Clean malformed / double-escaped brackets in internal citation links:
+    # Handles: [\[52](#page-43-0)], [[53\]](#page-43-0), [\[56](#page-43-0)], [[52](#page-43-0)], [\[52\]](#page-43-0)
+    def clean_citation_link(m):
+        inner = m.group(1).strip()
+        url = m.group(2).strip()
+        return f"[{inner}]({url})"
+
+    pat = r"[\[\\\\]+\s*([a-zA-Z0-9\s,\.\-]+?)\s*[\]\\\\]+\((#[^)]+)\)[\]\\\\]*"
+    full_text = re.sub(pat, clean_citation_link, full_text)
+
+
     return full_text.strip()
+
 
 
 def get_formatted_table_text(element):
@@ -226,10 +249,24 @@ class Markdownify(MarkdownConverter):
         return "\n\n" + table_md + "\n\n"
 
     def convert_a(self, el, text, parent_tags):
+        href = el.get("href", "")
+        # Internal page anchor or cross-reference link
+        if href.startswith("#"):
+            # Strip extra brackets already inside the anchor text
+            clean_text = re.sub(r"^[\\\[\]\s]+", "", text)
+            clean_text = re.sub(r"[\\\[\]\s]+$", "", clean_text)
+            # Handle leading dot before citation numbers, e.g. .8,9
+            leading_dot = ""
+            if re.match(r"^\.\s*\d", clean_text):
+                leading_dot = "."
+                clean_text = re.sub(r"^\.\s*", "", clean_text)
+            return f"{leading_dot}[{clean_text}]({href})"
+
         text = self.escape(text)
         # Escape brackets and parentheses in text
         text = re.sub(r"([\[\]()])", r"\\\1", text)
         return super().convert_a(el, text, parent_tags)
+
 
     def convert_span(self, el, text, parent_tags):
         if el.get("id"):
