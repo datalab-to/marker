@@ -97,6 +97,13 @@ def save_output(rendered: BaseModel, output_dir: str, fname_base: str):
     ) as f:
         f.write(json.dumps(rendered.metadata, indent=2))
 
+    image_format = settings.OUTPUT_IMAGE_FORMAT.upper()
+    if image_format in ("JPG", "JPEG"):
+        save_format = "JPEG"
+    else:
+        save_format = image_format
+
     for img_name, img in images.items():
         img = convert_if_not_rgb(img)  # RGBA images can't save as JPG
-        img.save(os.path.join(output_dir, img_name), settings.OUTPUT_IMAGE_FORMAT)
+        img.save(os.path.join(output_dir, img_name), save_format)
+
