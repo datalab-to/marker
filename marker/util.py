@@ -176,3 +176,22 @@ def unwrap_math(text: str, math_symbols: List[str] = MATH_SYMBOLS) -> str:
 
     # Otherwise, return as-is
     return text
+
+
+def strip_code_fence(text: str, lang: str = "") -> str:
+    """Remove a leading ```<lang> fence and a trailing ``` fence, if present.
+
+    ``str.lstrip``/``str.rstrip`` take a *set of characters* rather than a
+    prefix/suffix, so ``text.lstrip("```markdown")`` also eats any leading
+    run of ``` ` m a r k d o w n ``` characters from unfenced content -- for
+    example ``"and the results".lstrip("```markdown")`` returns
+    ``"the results"``.
+    """
+    text = text.strip()
+    for prefix in (f"```{lang}", "```"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    if text.endswith("```"):
+        text = text[: -len("```")]
+    return text.strip()

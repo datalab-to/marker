@@ -7,6 +7,7 @@ from marker.processors.llm import PromptData, BaseLLMSimpleBlockProcessor
 
 from marker.schema import BlockTypes
 from marker.schema.document import Document
+from marker.util import strip_code_fence
 
 
 class LLMComplexRegionProcessor(BaseLLMSimpleBlockProcessor):
@@ -86,7 +87,7 @@ Output:
             return
 
         # Convert LLM markdown to html
-        corrected_markdown = corrected_markdown.strip().lstrip("```markdown").rstrip("```").strip()
+        corrected_markdown = strip_code_fence(corrected_markdown, "markdown")
         block.html = markdown2.markdown(corrected_markdown, extras=["tables"])
 
 class ComplexSchema(BaseModel):
