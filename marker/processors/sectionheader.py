@@ -86,11 +86,18 @@ class SectionHeaderProcessor(BaseProcessor):
             return []
 
         data = np.asarray(line_heights).reshape(-1, 1)
-        labels = KMeans(
-            n_clusters=self.level_count, random_state=0, n_init="auto"
-        ).fit_predict(data)
+        # Clamp the cluster count to the number of distinct (rounded) sizes so
+        # that rendering jitter doesn't invent heading levels.
+        distinct_sizes = len(np.unique(np.round(data)))
+        clusters = min(self.level_count, distinct_sizes)
+        if clusters < 2:
+            return []
+        labels = KMeans(n_clusters=clusters, random_state=0, n_init="auto").fit_predict(
+            data
+        )
         data_labels = np.concatenate([data, labels.reshape(-1, 1)], axis=1)
-        data_labels = np.sort(data_labels, axis=0)
+        # Sort rows by height, keeping each height paired with its label.
+        data_labels = data_labels[data_labels[:, 0].argsort()]
 
         cluster_means = {
             int(label): float(np.mean(data_labels[data_labels[:, 1] == label, 0]))
