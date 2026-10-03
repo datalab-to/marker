@@ -48,7 +48,9 @@ def test_config_parser():
     assert kwargs["output_dir"] == "output_dir"
 
     assert config_dict["pdftext_workers"] == 1  # disabling multiprocessing does this
+    assert isinstance(config_dict["pdftext_workers"], int)
     assert config_dict["height_tolerance"] == 0.5
+    assert isinstance(config_dict["height_tolerance"], float)
 
 
 def test_config_none():
@@ -76,3 +78,8 @@ def test_config_force_ocr():
 
     # Validate kwarg capturing
     assert config_dict["force_ocr"]
+
+
+def test_config_invalid_height_tolerance():
+    kwargs = capture_kwargs(["test", "--height_tolerance", "not_a_float"])
+    assert "height_tolerance" not in kwargs
