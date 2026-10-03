@@ -36,7 +36,7 @@ Our managed platform runs a version of our latest open source model, [Chandra](h
 
 If you have high volume workloads, we offer a batch processing service that has processed 1B+ pages per week — we manage the infrastructure so your workloads finish on time.
 
-Get started with **$5 in free credits** — [sign up](https://www.datalab.to/?utm_source=gh-marker).
+Get started with **$20 in monthly free credits on a work email / $10 on a personal email** — [sign up](https://www.datalab.to/?utm_source=gh-marker).
 
 ## Performance
 
