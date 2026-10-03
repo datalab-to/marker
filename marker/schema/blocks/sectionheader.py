@@ -16,6 +16,8 @@ class SectionHeader(Block):
         if self.ignore_for_output:
             return ""
 
+        child_blocks.sort(key=lambda c: c.polygon.x_start)
+
         if self.html:
             return super().handle_html_output(
                 document, child_blocks, parent_structure, block_config
@@ -25,5 +27,9 @@ class SectionHeader(Block):
             document, child_blocks, parent_structure, block_config
         )
         template = template.replace("\n", " ")
+
+        template = template.replace("</content-ref>", "</content-ref> ")
+        template = " ".join(template.split())
+
         tag = f"h{self.heading_level}" if self.heading_level else "h2"
         return f"<{tag}>{template}</{tag}>"
