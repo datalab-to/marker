@@ -1,6 +1,8 @@
 import pytest
 
 from marker.converters.pdf import PdfConverter
+from marker.services import atlascloud as atlascloud_module
+from marker.services.atlascloud import AtlasCloudService
 from marker.services.gemini import GoogleGeminiService
 from marker.services.ollama import OllamaService
 from marker.services.vertex import GoogleVertexService
@@ -66,6 +68,52 @@ def test_llm_ollama(pdf_converter: PdfConverter, temp_doc):
 def test_llm_openai(pdf_converter: PdfConverter, temp_doc):
     assert pdf_converter.artifact_dict["llm_service"] is not None
     assert isinstance(pdf_converter.llm_service, OpenAIService)
+
+
+@pytest.mark.output_format("markdown")
+@pytest.mark.config(
+    {
+        "page_range": [0],
+        "use_llm": True,
+        "llm_service": "marker.services.atlascloud.AtlasCloudService",
+        "atlascloud_api_key": "test",
+    }
+)
+def test_llm_atlascloud(pdf_converter: PdfConverter, temp_doc):
+    assert pdf_converter.artifact_dict["llm_service"] is not None
+    assert isinstance(pdf_converter.llm_service, AtlasCloudService)
+    assert pdf_converter.llm_service.openai_base_url == "https://api.atlascloud.ai/v1"
+    assert pdf_converter.llm_service.openai_model == "google/gemini-3.5-flash"
+
+
+def test_atlascloud_service_uses_env_aliases(monkeypatch):
+    monkeypatch.delenv("ATLASCLOUD_API_KEY", raising=False)
+    monkeypatch.setenv("ATLAS_CLOUD_API_KEY", "env-test")
+    monkeypatch.setenv("ATLAS_CLOUD_BASE_URL", "https://atlas.example/v1/")
+
+    service = AtlasCloudService()
+
+    assert service.atlascloud_api_key == "env-test"
+    assert service.openai_api_key == "env-test"
+    assert service.atlascloud_base_url == "https://atlas.example/v1"
+    assert service.openai_base_url == "https://atlas.example/v1"
+
+
+def test_atlascloud_service_builds_openai_client(monkeypatch):
+    captured = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(atlascloud_module.openai, "OpenAI", FakeOpenAI)
+    service = AtlasCloudService({"atlascloud_api_key": "test"})
+
+    assert isinstance(service.get_client(), FakeOpenAI)
+    assert captured == {
+        "api_key": "test",
+        "base_url": "https://api.atlascloud.ai/v1",
+    }
 
 
 @pytest.mark.output_format("markdown")
