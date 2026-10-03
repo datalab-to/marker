@@ -19,13 +19,14 @@ class NewLine(Line):
     pass
 
 
-@pytest.mark.config({
-    "page_range": [0],
-    "override_map": {BlockTypes.SectionHeader: NewSectionHeader}
-})
+@pytest.mark.config(
+    {"page_range": [0], "override_map": {BlockTypes.SectionHeader: NewSectionHeader}}
+)
 def test_overriding(pdf_document: Document):
-    assert pdf_document.pages[0]\
-        .get_block(pdf_document.pages[0].structure[0]).__class__ == NewSectionHeader
+    assert (
+        pdf_document.pages[0].get_block(pdf_document.pages[0].structure[0]).__class__
+        == NewSectionHeader
+    )
 
 
 def get_lines(pdf: str, config=None):
@@ -36,11 +37,9 @@ def get_lines(pdf: str, config=None):
     return provider.get_page_lines(0)
 
 
+@pytest.mark.usefixtures("pdf_dataset")
 def test_overriding_mp():
-    config = {
-        "page_range": [0],
-        "override_map": {BlockTypes.Line: NewLine}
-    }
+    config = {"page_range": [0], "override_map": {BlockTypes.Line: NewLine}}
 
     pdf_list = ["adversarial.pdf", "adversarial_rot.pdf"]
 
