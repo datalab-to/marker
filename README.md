@@ -56,9 +56,9 @@ For the highest accuracy, pass the `--use_llm` flag to use an LLM alongside mark
 
 | PDF | File type | Markdown                                                                                                                     | JSON                                                                                                   |
 |-----|-----------|------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| [Think Python](https://greenteapress.com/thinkpython/thinkpython.pdf) | Textbook | [View](https://github.com/VikParuchuri/marker/blob/master/data/examples/markdown/thinkpython/thinkpython.md)                 | [View](https://github.com/VikParuchuri/marker/blob/master/data/examples/json/thinkpython.json)         |
-| [Switch Transformers](https://arxiv.org/pdf/2101.03961.pdf) | arXiv paper | [View](https://github.com/VikParuchuri/marker/blob/master/data/examples/markdown/switch_transformers/switch_trans.md) | [View](https://github.com/VikParuchuri/marker/blob/master/data/examples/json/switch_trans.json) |
-| [Multi-column CNN](https://arxiv.org/pdf/1804.07821.pdf) | arXiv paper | [View](https://github.com/VikParuchuri/marker/blob/master/data/examples/markdown/multicolcnn/multicolcnn.md)                 | [View](https://github.com/VikParuchuri/marker/blob/master/data/examples/json/multicolcnn.json)         |
+| [Think Python](https://greenteapress.com/thinkpython/thinkpython.pdf) | Textbook | [View](data/examples/markdown/thinkpython/thinkpython.md)                 | [View](data/examples/json/thinkpython.json)         |
+| [Switch Transformers](https://arxiv.org/pdf/2101.03961.pdf) | arXiv paper | [View](data/examples/markdown/switch_transformers/switch_trans.md) | [View](data/examples/json/switch_trans.json) |
+| [Multi-column CNN](https://arxiv.org/pdf/1804.07821.pdf) | arXiv paper | [View](data/examples/markdown/multicolcnn/multicolcnn.md)                 | [View](data/examples/json/multicolcnn.json)         |
 
 # Commercial usage
 
@@ -66,7 +66,7 @@ Our code is licensed under **Apache 2.0** — free to use, including commerciall
 
 # Community
 
-[Discord](https://discord.gg//KuZwXNGnfH) is where we discuss future development.
+[Discord](https://discord.gg/KuZwXNGnfH) is where we discuss future development.
 
 # Installation
 
@@ -81,7 +81,7 @@ pip install marker-pdf
 If you want to use marker on documents other than PDFs, you will need to install additional dependencies with:
 
 ```shell
-pip install marker-pdf[full]
+pip install "marker-pdf[full]"
 ```
 
 ## Inference backend prerequisites
@@ -106,12 +106,12 @@ First, some configuration:
   - `--disable_ocr` turns off **all** VLM calls (including equations) in either mode — pure text-layer extraction.
 - Marker runs layout, OCR, and table recognition through a single surya VLM, served by a local inference server (used for OCR in both modes, and for layout in balanced mode).  The server is spawned automatically on first use - vLLM (docker) on NVIDIA GPUs, llama.cpp elsewhere.  You can also point marker at an already-running server with `SURYA_INFERENCE_URL=http://host:port/v1`.
 - Useful server settings (all surya env vars): `SURYA_INFERENCE_BACKEND` (`vllm` or `llamacpp`), `SURYA_INFERENCE_PARALLEL` (concurrent requests — by default this auto-scales to the server's capacity: the GPU's `max_num_seqs` under vllm, a conservative slot count under llama.cpp; set an int only to override), `SURYA_INFERENCE_KEEP_ALIVE` (keep the server running between invocations), `VLLM_GPUS` (GPU indices for the server).
-- Some PDFs, even digital ones, have bad text in them.  Set `--force_ocr` to force OCR on all pages, or the `strip_existing_ocr` to keep all digital text, and strip out any existing OCR text.
+- Some PDFs, even digital ones, have bad text in them.  Set `--force_ocr` to force OCR on all pages, or `--strip_existing_ocr` to keep all digital text but strip out any existing OCR text.
 - Inline math is converted to LaTeX automatically in balanced mode (`ocr_inline_math`); in fast mode, set `--force_ocr` or `--ocr_inline_math` to get the same.
 
 ## Interactive App
 
-I've included a streamlit app that lets you interactively try marker with some basic options.  Run it with:
+We've included a streamlit app that lets you interactively try marker with some basic options.  Run it with:
 
 ```shell
 pip install -U streamlit streamlit-ace
@@ -124,7 +124,7 @@ marker_gui
 marker_single /path/to/file.pdf
 ```
 
-You can pass in PDFs or images.
+You can pass in PDFs or images, and with `marker-pdf[full]` also PPTX, DOCX, XLSX, HTML, and EPUB files.
 
 Options:
 - `--mode [balanced|fast]`: Conversion mode (see above).  Defaults by device: `balanced` on GPU, `fast` on CPU/MPS.
@@ -143,10 +143,10 @@ Options:
 - `--debug`: Enable debug mode for additional logging and diagnostic information.
 - `--processors TEXT`: Override the default processors by providing their full module paths, separated by commas. Example: `--processors "module1.processor1,module2.processor2"`
 - `--config_json PATH`: Path to a JSON configuration file containing additional settings.
-- `config --help`: List all available builders, processors, and converters, and their associated configuration.  These values can be used to build a JSON configuration file for additional tweaking of marker defaults.
+- `marker_single config --help`: List all available builders, processors, and converters, and their associated configuration.  These values can be used to build a JSON configuration file for additional tweaking of marker defaults.
 - `--converter_cls`: One of `marker.converters.pdf.PdfConverter` (default) or `marker.converters.table.TableConverter`.  The `PdfConverter` will convert the whole PDF, the `TableConverter` will only extract and convert tables.
 - `--llm_service`: Which llm service to use if `--use_llm` is passed.  This defaults to `marker.services.gemini.GoogleGeminiService`.
-- `--help`: see all of the flags that can be passed into marker.  (it supports many more options then are listed above)
+- `--help`: see all of the flags that can be passed into marker.  (it supports many more options than are listed above)
 
 OCR runs through the surya VLM, which is multilingual - see the [surya README](https://github.com/datalab-to/surya) for details.  If you don't need OCR, marker can work with any language.
 
@@ -309,7 +309,7 @@ The output will be a list, with each list item representing a page.  Each page i
 Pages have the keys:
 
 - `id` - unique id for the block.
-- `block_type` - the type of block. The possible block types can be seen in `marker/schema/__init__.py`.  As of this writing, they are ["Line", "Span", "FigureGroup", "TableGroup", "ListGroup", "PictureGroup", "Page", "Caption", "Code", "Figure", "Footnote", "Form", "Equation", "Handwriting", "TextInlineMath", "ListItem", "PageFooter", "PageHeader", "Picture", "SectionHeader", "Table", "Text", "TableOfContents", "Document"]
+- `block_type` - the type of block. The possible block types are defined in [`marker/schema/__init__.py`](marker/schema/__init__.py) (for example `Page`, `SectionHeader`, `Text`, `Table`, `Equation`, `Figure`, `ListItem`).
 - `html` - the HTML for the page.  Note that this will have recursive references to children.  The `content-ref` tags must be replaced with the child content if you want the full html.  You can see an example of this at `marker/output.py:json_to_html`.  That function will take in a single block from the json output, and turn it into HTML.
 - `polygon` - the 4-corner polygon of the page, in (x1,y1), (x2,y2), (x3, y3), (x4, y4) format.  (x1,y1) is the top left, and coordinates go clockwise.
 - `children` - the child blocks.
@@ -352,7 +352,7 @@ Note that child blocks of pages can have their own children as well (a tree stru
 
 ## Chunks
 
-Chunks format is similar to JSON, but flattens everything into a single list instead of a tree.  Only the top level blocks from each page show up. It also has the full HTML of each block inside, so you don't need to crawl the tree to reconstruct it.  This enable flexible and easy chunking for RAG.
+Chunks format is similar to JSON, but flattens everything into a single list instead of a tree.  Only the top level blocks from each page show up. It also has the full HTML of each block inside, so you don't need to crawl the tree to reconstruct it.  This enables flexible and easy chunking for RAG.
 
 ## Metadata
 
@@ -404,9 +404,9 @@ Marker is easy to extend.  The core units of marker are:
 - `Schema`, at `marker/schema`.  The classes for all the block types.
 - `Converters`, at `marker/converters`.  They run the whole end to end pipeline.
 
-To customize processing behavior, override the `processors`.  To add new output formats, write a new `renderer`.  For additional input formats, write a new `provider.`
+To customize processing behavior, override the `processors`.  To add new output formats, write a new `renderer`.  For additional input formats, write a new `provider`.
 
-Processors and renderers can be directly passed into the base `PDFConverter`, so you can specify your own custom processing easily.
+Processors and renderers can be directly passed into the base `PdfConverter`, so you can specify your own custom processing easily.
 
 ## API server
 
@@ -421,16 +421,28 @@ This will start a fastapi server that you can access at `localhost:8001` (use `-
 
 You can send requests like this:
 
-```
+```python
 import requests
-import json
 
 post_data = {
     'filepath': 'FILEPATH',
     # Accepted params: page_range, mode, force_ocr, paginate_output, output_format
 }
 
-requests.post("http://localhost:8001/marker", data=json.dumps(post_data)).json()
+requests.post("http://localhost:8001/marker", json=post_data).json()
+```
+
+`filepath` must be a path on the machine running the server.  To send a file from another machine, upload it to `/marker/upload` instead (same params, sent as form fields):
+
+```python
+import requests
+
+with open("FILEPATH", "rb") as f:
+    requests.post(
+        "http://localhost:8001/marker/upload",
+        files={"file": f},
+        data={"output_format": "markdown"},
+    ).json()
 ```
 
 The server accepts only the params listed above (`page_range`, `mode`, `force_ocr`, `paginate_output`, `output_format`).  The `--use_llm` hybrid path and `--disable_ocr` are not exposed over the API — use the CLI or the Python API for those, or the hosted [Datalab API](https://www.datalab.to/plans).
@@ -571,4 +583,4 @@ Note: Passing the `--use_llm` and `--force_ocr` flags will mostly solve these is
 You can always run `marker` locally, but if you wanted to expose it as an API, we have a few options:
 - Our platform API which is powered by `marker` and `surya` and is easy to test out - it's free to sign up, and we'll include credits, [try it out here](https://datalab.to)
 - Our painless on-prem solution for commercial use, which you can [read about here](https://www.datalab.to/blog/self-serve-on-prem-licensing) and gives you privacy guarantees with high throughput inference optimizations.
-- [Deployment example with Modal](./examples/README_MODAL.md) that shows you how to deploy and access `marker` through a web endpoint using [`Modal`](https://modal.com). Modal is an AI compute platform that enables developers to deploy and scale models on GPUs in minutes.
+- [Deployment example with Modal](./examples/README.md) that shows you how to deploy and access `marker` through a web endpoint using [`Modal`](https://modal.com). Modal is an AI compute platform that enables developers to deploy and scale models on GPUs in minutes.
