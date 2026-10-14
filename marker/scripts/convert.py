@@ -153,7 +153,7 @@ def process_single_pdf(args):
 def convert_cli(in_folder: str, **kwargs):
     total_pages = 0
     in_folder = os.path.abspath(in_folder)
-    files = [os.path.join(in_folder, f) for f in os.listdir(in_folder)]
+    files = sorted(os.path.join(in_folder, f) for f in os.listdir(in_folder))
     files = [f for f in files if os.path.isfile(f)]
 
     # Handle chunks if we're processing in parallel
