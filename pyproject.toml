@@ -31,6 +31,7 @@ dependencies = [
     "anthropic>=0.69.0,<1",
     "openai>=2.2.0,<3",
     "scikit-learn>=1.6.1,<2",
+    "wordninja>=2.0.0",
 ]
 
 [project.urls]
