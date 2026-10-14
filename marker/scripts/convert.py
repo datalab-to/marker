@@ -167,6 +167,10 @@ def convert_cli(in_folder: str, **kwargs):
     if kwargs["max_files"]:
         files_to_convert = files_to_convert[: kwargs["max_files"]]
 
+    if not files_to_convert:
+        logger.info("No files to convert in this chunk.")
+        return
+
     # Disable nested multiprocessing
     kwargs["disable_multiprocessing"] = True
 
