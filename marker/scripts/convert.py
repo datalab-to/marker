@@ -218,7 +218,7 @@ def convert_cli(in_folder: str, **kwargs):
         model_device = "cpu"
 
     kwargs["total_torch_threads"] = max(
-        2, psutil.cpu_count(logical=False) // total_processes
+        2, (psutil.cpu_count(logical=False) or 4) // total_processes
     )
 
     logger.info(
