@@ -86,3 +86,28 @@ def test_markdown_renderer_tables(pdf_document):
     renderer = MarkdownRenderer()
     md = renderer(pdf_document).markdown
     assert "54 <i>.45</i> 67<br>89 $x$" in md
+
+
+def test_markdown_renderer_detects_truncation():
+    # No pdf_document / models needed: detect_truncation is a pure post-render
+    # integrity check over the assembled HTML and the produced markdown.
+    renderer = MarkdownRenderer()
+
+    early = "".join(f"<p>Real body paragraph {i}.</p>" for i in range(1, 15))
+    tail = "".join(
+        f"<p>Tail paragraph {i} that the HTML parser silently discards.</p>"
+        for i in range(1, 120)
+    )
+
+    # An unclosed <script> makes BeautifulSoup treat the whole tail as CDATA,
+    # so markdownify returns a truncated string without raising.
+    truncated_html = early + "<script>garbage()" + tail
+    truncated_md = renderer.md_cls.convert(truncated_html)
+    assert "Tail paragraph 100" not in truncated_md
+    assert renderer.detect_truncation(truncated_html, truncated_md) is True
+
+    # The same content without the poisoning token renders in full.
+    intact_html = early + tail
+    intact_md = renderer.md_cls.convert(intact_html)
+    assert "Tail paragraph 100" in intact_md
+    assert renderer.detect_truncation(intact_html, intact_md) is False
