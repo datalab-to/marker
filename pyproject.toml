@@ -1,6 +1,6 @@
 [project]
 name = "marker-pdf"
-version = "2.0.0"
+version = "2.1.0"
 description = "Convert documents to markdown with high speed and accuracy."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -20,7 +20,7 @@ dependencies = [
     "tqdm>=4.66.1,<5",
     "ftfy>=6.1.1,<7",
     "rapidfuzz>=3.8.1,<4",
-    "surya-ocr>=0.22.1,<0.23.0",
+    "surya-ocr>=0.23.0,<0.24.0",
     "regex>=2024.4.28",
     "pdftext>=0.7.0,<0.8.0",
     "markdownify>=1.1.0,<2",
