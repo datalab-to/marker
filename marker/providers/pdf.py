@@ -380,7 +380,11 @@ class PdfProvider(BaseProvider):
             for img_obj in filter(
                 lambda obj: obj.type == pdfium_c.FPDF_PAGEOBJ_IMAGE, page_objs
             ):
-                img_bbox = PolygonBox.from_bbox(img_obj.get_pos())
+                if hasattr(img_obj, "get_bounds"):
+                    bbox = img_obj.get_bounds()
+                else:
+                    bbox = img_obj.get_pos()
+                img_bbox = PolygonBox.from_bbox(bbox)
                 if page_bbox.intersection_pct(img_bbox) >= self.image_threshold:
                     return False
 
