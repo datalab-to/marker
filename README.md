@@ -162,7 +162,8 @@ marker /path/to/input/folder
 - `--workers` is the number of conversion workers to run simultaneously.  This is automatically set by default, but you can increase it to increase throughput, at the cost of more CPU usage.  All workers share a single inference server, which the parent process spawns.
 - The parent budgets total VLM concurrency automatically: it reads the server's capacity and splits it across workers (aggregate in-flight ≈ 1.5× capacity), so adding workers never over-queues the server.  Set `SURYA_INFERENCE_PARALLEL` yourself only to override.
 - With `--disable_ocr` no inference server is started at all, and the pool is sized purely by CPU cores.
-- `--skip_existing` skips input files that already have output in `--output_dir` (resume a run); `--max_files N` caps how many files are converted; `--disable_multiprocessing` runs everything in one process.
+- `--skip_existing` skips input files that already have output in `--output_dir` (resume a run); `--max_files N` caps how many files are converted.
+- `--disable_multiprocessing` sets `pdftext_workers=1` for PDF text extraction. Batch conversion already applies this setting to avoid nested multiprocessing. Use `--workers 1` to run a batch with one conversion worker, or `marker_single` to convert one file without the batch worker pool.
 
 ### Batch sizing cheat sheet (e.g. 1000 docs)
 
@@ -446,7 +447,7 @@ There are some settings that you may find useful if things aren't working the wa
 - If you have issues with accuracy, try setting `--use_llm` to use an LLM to improve quality.  You must set `GOOGLE_API_KEY` to a Gemini API key for this to work.
 - Make sure to set `force_ocr` if you see garbled text - this will re-OCR the document.
 - `TORCH_DEVICE` - set this to force the small local models (ocr error detection) onto a given torch device.  The VLM runs in the inference server - control its placement with `SURYA_INFERENCE_BACKEND` / `VLLM_GPUS`.
-- If you're getting out of memory errors, decrease worker count.  You can also try splitting up long PDFs into multiple files.
+- If you're getting out of memory errors during batch conversion, decrease the worker count with `--workers`, for example `marker /folder --workers 1`.  You can also try splitting up long PDFs into multiple files.
 - For hard documents or large volumes, try the hosted [Datalab API](https://www.datalab.to/?utm_source=gh-marker), which uses Chandra and other models and manages the infrastructure for you.
 
 ## Debugging
