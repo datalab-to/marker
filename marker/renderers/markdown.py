@@ -98,6 +98,15 @@ class Markdownify(MarkdownConverter):
                 return f"{text}"
         return f"{text}\n\n" if text else ""  # default convert_p behavior
 
+    def convert_li(self, el, text, parent_tags):
+        # OCR'd lists often carry their own numbering ("1. Foo") inside an <ol>;
+        # keep that number instead of prepending a second one
+        match = re.match(r"\s*(\d+)[.)]\s+", text or "")
+        if el.parent is None or el.parent.name != "ol" or not match:
+            return super().convert_li(el, text, parent_tags)
+        item = super().convert_li(el, text[match.end() :], parent_tags)
+        return re.sub(r"^\d+\.", match.group(1) + ".", item, count=1)
+
     def convert_chem(self, el, text, parent_tags):
         # Chemical structures (from ChemicalBlock or inline) - fence the
         # model's representation so it survives markdown conversion

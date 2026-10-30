@@ -299,6 +299,12 @@ class OcrBuilder(BaseBuilder):
                 if attribute in tag.attrs:
                     del tag.attrs[attribute]
 
+        # The VLM marks non-text regions (e.g. signatures) with a bare <img/>;
+        # it has no source, so it would render as an empty image (![]())
+        for img in soup.find_all("img"):
+            if not img.get("src"):
+                img.decompose()
+
         # Re-serializing through BeautifulSoup balances any tags left open by
         # token-budget truncation
         return str(soup).strip()

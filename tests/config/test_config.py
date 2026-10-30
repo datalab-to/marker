@@ -76,3 +76,11 @@ def test_config_force_ocr():
 
     # Validate kwarg capturing
     assert config_dict["force_ocr"]
+
+
+def test_output_paths_trailing_space(tmp_path):
+    parser = ConfigParser({"output_dir": str(tmp_path)})
+    fpath = "docs/Rental Application .pdf"
+
+    assert parser.get_base_filename(fpath) == "Rental Application"
+    assert parser.get_output_folder(fpath) == str(tmp_path / "Rental Application")

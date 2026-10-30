@@ -183,11 +183,13 @@ class ConfigParser:
 
     def get_output_folder(self, filepath: str):
         output_dir = self.cli_options.get("output_dir", settings.OUTPUT_DIR)
-        fname_base = os.path.splitext(os.path.basename(filepath))[0]
+        fname_base = self.get_base_filename(filepath)
         output_dir = os.path.join(output_dir, fname_base)
         os.makedirs(output_dir, exist_ok=True)
         return output_dir
 
     def get_base_filename(self, filepath: str):
-        basename = os.path.basename(filepath)
-        return os.path.splitext(basename)[0]
+        basename = os.path.splitext(os.path.basename(filepath))[0]
+        # Windows silently strips trailing spaces/dots from directory names, so
+        # "report .pdf" would create "report" but write to "report \report .md"
+        return basename.rstrip(" .") or basename

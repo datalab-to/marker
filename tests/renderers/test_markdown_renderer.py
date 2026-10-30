@@ -64,6 +64,21 @@ def test_markdown_renderer_images(pdf_document):
     assert "![](" not in markdown_output.markdown
 
 
+@pytest.mark.cpu
+def test_markdown_ordered_list_ocr_numbering():
+    md = MarkdownRenderer().md_cls.convert(
+        "<ol><li>1. First</li><li>2) Second</li></ol>"
+        "<ol start='7'><li>7. Seventh</li><li>3.5 kg of flour</li></ol>"
+    )
+
+    assert "1. First" in md
+    assert "2. Second" in md
+    assert "1. 1." not in md
+    assert "7. Seventh" in md
+    # Item text that merely starts with a number keeps the list numbering
+    assert "8. 3.5 kg of flour" in md
+
+
 @pytest.mark.config({"page_range": [5]})
 def test_markdown_renderer_tables(pdf_document):
     table = pdf_document.contained_blocks((BlockTypes.Table,))[0]

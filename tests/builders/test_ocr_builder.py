@@ -12,6 +12,10 @@ def test_clean_html(recognition_model):
     assert "</b>" in cleaned
     assert "Hello" in cleaned
 
+    # Source-less image placeholders are dropped, text around them is kept
+    cleaned = builder.clean_html("<p><img/>Jane Doe</p>")
+    assert cleaned == "<p>Jane Doe</p>"
+
     # Repetition loops are dropped
     looping = "<p>" + "same phrase " * 400
     assert builder.clean_html(looping) == ""
