@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, Annotated
 import io
 
-from fastapi import FastAPI, Form, File, UploadFile
+from fastapi import FastAPI, Form, File, HTTPException, UploadFile
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.settings import settings
@@ -24,6 +24,18 @@ app_data = {}
 
 UPLOAD_DIRECTORY = "./uploads"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+
+
+def _ensure_filepath_in_upload_dir(filepath: Optional[str]) -> None:
+    if not filepath:
+        raise HTTPException(status_code=400, detail="Invalid filepath")
+    upload_root = os.path.realpath(UPLOAD_DIRECTORY)
+    resolved = os.path.realpath(filepath)
+    try:
+        if os.path.commonpath([upload_root, resolved]) != upload_root:
+            raise HTTPException(status_code=400, detail="Invalid filepath")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid filepath") from None
 
 
 @asynccontextmanager
@@ -138,6 +150,7 @@ async def _convert_pdf(params: CommonParams):
 
 @app.post("/marker")
 async def convert_pdf(params: CommonParams):
+    _ensure_filepath_in_upload_dir(params.filepath)
     return await _convert_pdf(params)
 
 
