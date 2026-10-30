@@ -52,7 +52,7 @@ See [below](#benchmarks) for the full per-category scores, the competitive compa
 
 ## Hybrid Mode
 
-For the highest accuracy, pass the `--use_llm` flag to use an LLM alongside marker.  This will do things like merge tables across pages, handle inline math, format tables properly, and extract values from forms.  It works with Gemini, Claude, OpenAI-compatible, Azure, Vertex, OpenRouter, or Ollama models.  By default, it uses `gemini-3.5-flash`.  See [below](#llm-services) for details.
+For the highest accuracy, pass the `--use_llm` flag to use an LLM alongside marker.  This will do things like merge tables across pages, handle inline math, format tables properly, and extract values from forms.  It works with Gemini, Claude, OpenAI-compatible, Azure, Vertex, OpenRouter, Cheaper Inference, or Ollama models.  By default, it uses `gemini-3.5-flash`.  See [below](#llm-services) for details.
 
 ## Examples
 
@@ -392,6 +392,7 @@ When running with the `--use_llm` flag, you have a choice of services you can us
 - `OpenAI` - this supports any openai-like endpoint. You can configure `--openai_api_key`, `--openai_model`, and `--openai_base_url`. To use it, set `--llm_service=marker.services.openai.OpenAIService`.
 - `Azure OpenAI` - this uses the Azure OpenAI service. You can configure `--azure_endpoint`, `--azure_api_key`, and `--deployment_name`. To use it, set `--llm_service=marker.services.azure_openai.AzureOpenAIService`.
 - `OpenRouter` - this uses [OpenRouter](https://openrouter.ai)'s OpenAI-compatible API.  You can configure `--openrouter_api_key` (or the `OPENROUTER_API_KEY` env var), `--openrouter_model` (default `google/gemini-3.5-flash`), and `--openrouter_base_url`.  To use it, set `--llm_service=marker.services.openrouter.OpenRouterService`.
+- `Cheaper Inference` - this uses [Cheaper Inference](https://cheaperinference.com)'s OpenAI-compatible API.  You can configure `--cheaperinference_api_key` (or the `CHEAPER_INFERENCE_API_KEY` env var), `--cheaperinference_model` (default `gpt-5.4-mini`), and `--cheaperinference_base_url`.  To use it, set `--llm_service=marker.services.cheaperinference.CheaperInferenceService`.
 
 These services may have additional optional configuration as well - you can see it by viewing the classes.
 
