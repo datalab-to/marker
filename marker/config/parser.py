@@ -26,7 +26,7 @@ class ConfigParser:
             "--output_dir",
             type=click.Path(exists=False),
             required=False,
-            default=settings.OUTPUT_DIR,
+            default=None,
             help="Directory to save output.",
         )(fn)
         fn = click.option("--debug", "-d", is_flag=True, help="Enable debug mode.")(fn)
@@ -94,7 +94,7 @@ class ConfigParser:
 
     def generate_config_dict(self) -> Dict[str, any]:
         config = {}
-        output_dir = self.cli_options.get("output_dir", settings.OUTPUT_DIR)
+        output_dir = self.get_output_base_dir()
         for k, v in self.cli_options.items():
             # None means "not provided". Explicit falsy values (False, 0) are
             # real settings and must flow through - dropping them made it
@@ -182,7 +182,7 @@ class ConfigParser:
         return PdfConverter
 
     def get_output_folder(self, filepath: str):
-        output_dir = self.cli_options.get("output_dir", settings.OUTPUT_DIR)
+        output_dir = self.get_output_base_dir()
         fname_base = os.path.splitext(os.path.basename(filepath))[0]
         output_dir = os.path.join(output_dir, fname_base)
         os.makedirs(output_dir, exist_ok=True)
@@ -191,3 +191,6 @@ class ConfigParser:
     def get_base_filename(self, filepath: str):
         basename = os.path.basename(filepath)
         return os.path.splitext(basename)[0]
+
+    def get_output_base_dir(self):
+        return self.cli_options.get("output_dir") or os.getcwd()

@@ -54,6 +54,7 @@ def test_config_parser():
 def test_config_none():
     kwargs = capture_kwargs(["test"])
 
+    assert kwargs["output_dir"] is None
     for key in crawler.attr_set:
         # We force some options to become flags for ease of use on the CLI
         value = None
@@ -76,3 +77,17 @@ def test_config_force_ocr():
 
     # Validate kwarg capturing
     assert config_dict["force_ocr"]
+
+
+def test_output_folder_defaults_to_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    parser = ConfigParser({"output_dir": None})
+
+    assert parser.get_output_folder("/tmp/example.pdf") == str(tmp_path / "example")
+
+
+def test_output_folder_uses_explicit_output_dir(tmp_path):
+    output_dir = tmp_path / "out"
+    parser = ConfigParser({"output_dir": str(output_dir)})
+
+    assert parser.get_output_folder("/tmp/example.pdf") == str(output_dir / "example")
