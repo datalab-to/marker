@@ -31,6 +31,9 @@ class OllamaService(BaseService):
         max_retries: int | None = None,
         timeout: int | None = None,
     ):
+        if timeout is None:
+            timeout = self.timeout
+
         url = f"{self.ollama_base_url}/api/generate"
         headers = {"Content-Type": "application/json"}
 
@@ -52,7 +55,9 @@ class OllamaService(BaseService):
         }
 
         try:
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(
+                url, json=payload, headers=headers, timeout=timeout
+            )
             response.raise_for_status()
             response_data = response.json()
 
