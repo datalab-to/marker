@@ -60,5 +60,10 @@ class BaseTable(Block):
             # Table processor
             return template + self.format_cells(document, child_blocks, block_config)
         else:
-            # Default text lines and spans
+            # Default text lines and spans: the table got no HTML (the pdftext
+            # rebuild found no confident grid and OCR was disabled or failed),
+            # so render its own lines rather than dropping its text.
+            template = super().assemble_html(
+                document, child_blocks, parent_structure, block_config
+            )
             return f"<p>{template}</p>"
