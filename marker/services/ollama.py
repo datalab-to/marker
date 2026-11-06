@@ -56,9 +56,9 @@ class OllamaService(BaseService):
             response.raise_for_status()
             response_data = response.json()
 
-            total_tokens = (
-                response_data["prompt_eval_count"] + response_data["eval_count"]
-            )
+            total_tokens = response_data.get(
+                "prompt_eval_count", 0
+            ) + response_data.get("eval_count", 0)
 
             if block:
                 block.update_metadata(llm_request_count=1, llm_tokens_used=total_tokens)
