@@ -2413,7 +2413,7 @@ requires-dist = [
     { name = "openai", specifier = ">=2.2.0,<3" },
     { name = "openpyxl", marker = "extra == 'full'", specifier = ">=3.1.5,<4" },
     { name = "pdftext", specifier = ">=0.7.0,<0.8.0" },
-    { name = "pillow", specifier = ">=10.1.0,<11" },
+    { name = "pillow", specifier = ">=10.1.0,<14" },
     { name = "psutil", specifier = ">=7.0.0,<8" },
     { name = "pydantic", specifier = ">=2.4.2,<3" },
     { name = "pydantic-settings", specifier = ">=2.0.3,<3" },
