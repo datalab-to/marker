@@ -93,6 +93,7 @@ Output:
             .removesuffix("```")
             .strip()
         )
+        block.ignore_for_output = False
         block.html = markdown2.markdown(corrected_markdown, extras=["tables"])
 
 class ComplexSchema(BaseModel):

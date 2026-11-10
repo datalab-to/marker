@@ -327,7 +327,7 @@ class LineBuilder(BaseBuilder):
         ):
             try:
                 import pypdfium2 as pdfium
-                from indra_ocr.text_layer import (
+                from indra_ocr.document import (
                     CHECK_DPI,
                     _render,
                     page_turn,

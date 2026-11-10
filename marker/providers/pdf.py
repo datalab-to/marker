@@ -355,18 +355,6 @@ class PdfProvider(BaseProvider):
         if not text_objs:
             return False
 
-        if not self.disable_ocr and not self.strip_existing_ocr:
-            inv_count = sum(
-                1
-                for text_obj in text_objs
-                if pdfium_c.FPDFTextObj_GetTextRenderMode(
-                    text_obj.raw if hasattr(text_obj, "raw") else text_obj
-                )
-                == pdfium_c.FPDF_TEXTRENDERMODE_INVISIBLE
-            )
-            if inv_count > 0.05 * len(text_objs):
-                return False
-
         if self.strip_existing_ocr:
             non_embedded_fonts = []
             empty_fonts = []

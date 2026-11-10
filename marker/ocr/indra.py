@@ -108,9 +108,54 @@ class IndraRecognitionPredictor:
     @property
     def engine(self):
         if self._engine is None:
+            import os
+            from pathlib import Path
+            import urllib.request
             from indra_ocr import OrtOCR, model_dir
+            from indra_ocr.models import HF_REPO, HF_REVISION, MATH_FILES
 
-            onnx_dir = model_dir(self.model_path, math=self.math)
+            try:
+                onnx_dir = model_dir(self.model_path, math=self.math)
+            except Exception:
+                cache_dir = (
+                    Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+                    / "indra_ocr"
+                    / HF_REVISION
+                )
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                base_files = (
+                    "det.onnx",
+                    "rec.onnx",
+                    "rec_cjk.onnx",
+                    "rec_rtl.onnx",
+                    "rec_world.onnx",
+                    "order.onnx",
+                    "orient.onnx",
+                    "script.onnx",
+                    "meta.json",
+                    "lm.npz",
+                    "lm_cjk.npz",
+                    "lm_world.npz",
+                )
+                needed_files = base_files + (tuple(MATH_FILES) if self.math else ())
+                token = os.environ.get("HF_TOKEN") or os.environ.get(
+                    "HUGGING_FACE_HUB_TOKEN"
+                )
+                for fname in needed_files:
+                    dest = cache_dir / fname
+                    if dest.exists() and dest.stat().st_size > 0:
+                        continue
+                    url = f"https://huggingface.co/{HF_REPO}/resolve/{HF_REVISION}/{fname}"
+                    req = urllib.request.Request(url)
+                    if token:
+                        req.add_header("Authorization", f"Bearer {token}")
+                    tmp_dest = cache_dir / f".{fname}.{os.getpid()}.tmp"
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        tmp_dest.write_bytes(resp.read())
+                    tmp_dest.replace(dest)
+                os.environ["INDRA_OCR_MODEL_DIR"] = str(cache_dir)
+                onnx_dir = model_dir(str(cache_dir), math=self.math)
+
             self._engine = OrtOCR(
                 onnx_dir,
                 threads=self.threads,
@@ -288,13 +333,43 @@ class IndraRecognitionPredictor:
                                     lbl = "Text"
 
                         if (
+                            lbl == "SectionHeader"
+                            and any(rb["label"] == "SectionHeader" for rb in raw_blocks)
+                        ):
+                            if "@" in blk_text or (
+                                getattr(page, "page_id", 0) == 0
+                                and by0 < 0.25 * h
+                                and len(uniq_lines) >= 2
+                                and not re.match(
+                                    r"^\s*(?:abstract|\d+[.\s])", blk_text, re.I
+                                )
+                            ):
+                                lbl = "Text"
+                                raw_lbl = "Text"
+
+                        if (
                             lbl == "Text"
+                            and not any(
+                                rb["label"] == "SectionHeader" for rb in raw_blocks
+                            )
                             and 1 <= len(uniq_lines) <= 4
                             and by0 < 0.35 * h
                             and float(np.mean(b[:, 3] - b[:, 1])) > median_h * 1.18
                             and any(c.isalpha() for c in blk_text)
                         ):
                             lbl = "SectionHeader"
+
+                        if (
+                            lbl == "Text"
+                            and len(uniq_lines) <= 12
+                            and re.match(
+                                r"^\s*(?:Figure|Fig\.?|Table|Tab\.?)\s+(?:\d+|[IVXLC]+)(?:\.\d+)?\s*[.:]\s+\S",
+                                blk_text,
+                                re.I,
+                            )
+                        ):
+                            lbl = "Caption"
+                            raw_lbl = "Caption"
 
                         if (
                             lbl in ("Text", "Table")
@@ -338,14 +413,32 @@ class IndraRecognitionPredictor:
                                                 for ch in s_no_ws
                                                 if (0x0370 <= ord(ch) <= 0x03FF)
                                                 or (0x2100 <= ord(ch) <= 0x22FF)
-                                                or ch in "=+-*/^_<>∑∏∫√∞≈≠≤≥±×÷∈∉⊂⊃∪∩"
+                                                or ch in "=+-*/^_<>∑∏∫√∞≈≠≤≥±×÷∈∉⊂⊃∪∩\\"
+                                            )
+                                            clean_stxt = re.sub(
+                                                r"\\[A-Za-z]+", " ", stxt
                                             )
                                             prose_words += sum(
                                                 1
-                                                for w_ in stxt.split()
+                                                for w_ in clean_stxt.split()
                                                 if len(w_) >= 4 and w_.isalpha()
                                             )
-                                if total_chars > 0 and prose_words < 4:
+                                if total_chars > 0 and (
+                                    prose_words < 4
+                                    or blk_text.lstrip().startswith(
+                                        (
+                                            "\\min",
+                                            "\\max",
+                                            "\\sum",
+                                            "\\int",
+                                            "\\mathbf",
+                                            "\\mathcal",
+                                            "\\mathbb",
+                                            "\\frac",
+                                            "$$",
+                                        )
+                                    )
+                                ):
                                     is_eq = (
                                         (
                                             not hp
@@ -358,8 +451,18 @@ class IndraRecognitionPredictor:
                                             (math_font_chars / total_chars) >= 0.35
                                             and (math_chars / total_chars) >= 0.50
                                         )
-                                        or blk_text.startswith(
-                                            ("\\min", "\\max", "\\sum", "\\int", "$$")
+                                        or blk_text.lstrip().startswith(
+                                            (
+                                                "\\min",
+                                                "\\max",
+                                                "\\sum",
+                                                "\\int",
+                                                "\\mathbf",
+                                                "\\mathcal",
+                                                "\\mathbb",
+                                                "\\frac",
+                                                "$$",
+                                            )
                                         )
                                     )
                                     if is_eq:
@@ -371,6 +474,7 @@ class IndraRecognitionPredictor:
                                 "label": lbl,
                                 "raw_label": raw_lbl,
                                 "bbox": [bx0, by0, bx1, by1],
+                                "text": blk_text,
                             }
                         )
                 elif len(boxes) > 0:
@@ -463,6 +567,76 @@ class IndraRecognitionPredictor:
                                 },
                             )
 
+                fig_captions = [
+                    rb
+                    for rb in raw_blocks
+                    if rb.get("label") == "Caption"
+                    and re.match(
+                        r"^\s*(?:Figure|Fig\.?)\b", rb.get("text", ""), re.I
+                    )
+                ]
+                for cb in fig_captions:
+                    if cb not in raw_blocks:
+                        continue
+                    cx0, cy0, cx1, cy1 = cb["bbox"]
+                    cw = max(1.0, cx1 - cx0)
+                    matched_pic = None
+                    for rb in raw_blocks:
+                        if rb is cb or rb.get("label") not in ("Picture", "Figure"):
+                            continue
+                        bx0, by0, bx1, by1 = rb["bbox"]
+                        if min(cx1, bx1) - max(cx0, bx0) >= 0.25 * cw and (
+                            0 <= cy0 - by1 < 0.08 * h or 0 <= by0 - cy1 < 0.08 * h
+                        ):
+                            matched_pic = rb
+                            break
+                    if matched_pic is not None:
+                        matched_pic["label"] = "Figure"
+                        matched_pic["raw_label"] = "Figure"
+                        raw_blocks.remove(matched_pic)
+                        raw_blocks.insert(raw_blocks.index(cb), matched_pic)
+                        continue
+
+                    cand_blocks = []
+                    for rb in raw_blocks:
+                        if rb is cb or rb.get("label") not in ("Table", "Text"):
+                            continue
+                        bx0, by0, bx1, by1 = rb["bbox"]
+                        bw = max(1.0, bx1 - bx0)
+                        if (
+                            min(cx1, bx1) - max(cx0, bx0) >= 0.4 * min(cw, bw)
+                            and bw <= cw * 1.15
+                            and by1 <= cy0 + 4.0
+                            and 0 <= cy0 - by0 <= 0.25 * h
+                        ):
+                            rtxt = rb.get("text", "")
+                            if (
+                                rb.get("label") == "Table"
+                                and "table" not in rtxt.lower()
+                            ) or (
+                                rb.get("label") == "Text"
+                                and len(rtxt.split()) <= 12
+                            ):
+                                cand_blocks.append(rb)
+                    if cand_blocks and any(
+                        cy0 - b["bbox"][3] < 0.05 * h for b in cand_blocks
+                    ):
+                        fx0 = round(min(b["bbox"][0] for b in cand_blocks), 1)
+                        fy0 = round(min(b["bbox"][1] for b in cand_blocks), 1)
+                        fx1 = round(max(b["bbox"][2] for b in cand_blocks), 1)
+                        fy1 = round(max(b["bbox"][3] for b in cand_blocks), 1)
+                        for b in cand_blocks:
+                            raw_blocks.remove(b)
+                        raw_blocks.insert(
+                            raw_blocks.index(cb),
+                            {
+                                "label": "Figure",
+                                "raw_label": "Figure",
+                                "bbox": [fx0, fy0, fx1, fy1],
+                                "text": "",
+                            },
+                        )
+
                 layout_boxes: List[LayoutBox] = []
                 for pos, blk in enumerate(raw_blocks):
                     bx0, by0, bx1, by1 = [float(v) for v in blk["bbox"]]
@@ -484,42 +658,30 @@ class IndraRecognitionPredictor:
                 ih, iw = gray.shape[:2]
                 sx = w / max(iw, 1)
                 sy = h / max(ih, 1)
-                det_boxes, pic_boxes = self.engine.detect_all(gray)
+                prev_th = getattr(self.engine, "table_heads", False)
+                self.engine.table_heads = False
+                try:
+                    i_page = self.engine(gray, turn=False)
+                finally:
+                    self.engine.table_heads = prev_th
                 layout_boxes = []
-                if len(det_boxes) > 0:
-                    scaled_det = det_boxes[:, :4].astype(np.float32).copy()
-                    scaled_det[:, [0, 2]] *= sx
-                    scaled_det[:, [1, 3]] *= sy
-                    for grp in xycut_blocks(scaled_det):
-                        gb = scaled_det[grp]
-                        bx0 = round(float(gb[:, 0].min()), 1)
-                        by0 = round(float(gb[:, 1].min()), 1)
-                        bx1 = round(float(gb[:, 2].max()), 1)
-                        by1 = round(float(gb[:, 3].max()), 1)
-                        layout_boxes.append(
-                            LayoutBox(
-                                polygon=[[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]],
-                                label="Text",
-                                raw_label="Text",
-                                position=len(layout_boxes),
-                                confidence=1.0,
-                            )
+                for blk in i_page.blocks:
+                    raw_lbl = blk.get("label", "Text")
+                    lbl = INDRA_TO_SURYA_LABEL.get(raw_lbl, "Text")
+                    bbox = blk.get("bbox", [0, 0, iw, ih])
+                    bx0 = round(float(bbox[0] * sx), 1)
+                    by0 = round(float(bbox[1] * sy), 1)
+                    bx1 = round(float(bbox[2] * sx), 1)
+                    by1 = round(float(bbox[3] * sy), 1)
+                    layout_boxes.append(
+                        LayoutBox(
+                            polygon=[[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]],
+                            label=lbl,
+                            raw_label=raw_lbl,
+                            position=len(layout_boxes),
+                            confidence=1.0,
                         )
-                if len(pic_boxes) > 0:
-                    for p in pic_boxes[:, :4]:
-                        px0 = round(float(p[0] * sx), 1)
-                        py0 = round(float(p[1] * sy), 1)
-                        px1 = round(float(p[2] * sx), 1)
-                        py1 = round(float(p[3] * sy), 1)
-                        layout_boxes.append(
-                            LayoutBox(
-                                polygon=[[px0, py0], [px1, py0], [px1, py1], [px0, py1]],
-                                label="Picture",
-                                raw_label="Picture",
-                                position=len(layout_boxes),
-                                confidence=1.0,
-                            )
-                        )
+                    )
                 results.append(LayoutResult(bboxes=layout_boxes, image_bbox=page_bbox))
         return results
 

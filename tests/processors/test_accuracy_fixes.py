@@ -212,3 +212,28 @@ def test_surya_compact_blocks_wrapping_and_postprocessors():
     assert "First paragraph.\n\nSecond paragraph." in md
     assert "$$E = mc^2$$" in md
 
+
+def test_complex_region_clears_ignore_for_output():
+    from marker.renderers.markdown import MarkdownRenderer
+    from marker.schema.blocks import ComplexRegion, PageHeader
+
+    page_poly = PolygonBox.from_bbox([0, 0, 1000, 1000])
+    page = PageGroup(
+        page_id=0,
+        polygon=page_poly,
+    )
+    ph = page.add_block(PageHeader, PolygonBox.from_bbox([50, 20, 400, 60]))
+    page.add_structure(ph)
+    assert ph.ignore_for_output is True
+
+    complex_block = ComplexRegion(
+        **ph.dict(exclude=["id", "block_id", "block_type"])
+    )
+    complex_block.html = "<p>Complex header diagram text</p>"
+
+    page.replace_block(ph, complex_block)
+    doc = Document(filepath="test.pdf", pages=[page])
+    md = MarkdownRenderer()(doc).markdown
+    assert "Complex header diagram text" in md
+
+

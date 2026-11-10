@@ -9,6 +9,7 @@ class ComplexRegion(Block):
 
     def assemble_html(self, document, child_blocks, parent_structure, block_config):
         if self.html:
+            self.ignore_for_output = False
             return super().handle_html_output(
                 document, child_blocks, parent_structure, block_config
             )
