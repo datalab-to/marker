@@ -84,7 +84,7 @@ class IgnoreTextProcessor(BaseProcessor):
         common = [
             k for k, v in counter.items()
             if (v >= len(blocks) * self.common_element_threshold or streaks[k] >= self.max_streak)
-            and v > self.common_element_min_blocks
+            and v >= self.common_element_min_blocks
         ]
         if len(common) == 0:
             return

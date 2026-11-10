@@ -3,7 +3,6 @@ from collections import defaultdict
 from typing import Annotated, Tuple
 
 import regex
-import six
 from bs4 import NavigableString
 from markdownify import MarkdownConverter, re_whitespace
 from marker.logger import get_logger
@@ -15,12 +14,20 @@ from marker.schema.document import Document
 
 logger = get_logger()
 
+_HYPHENS = r"-—¬"
+_HYPHENS_MATCH_RE = regex.compile(rf".*[\p{{Ll}}|\d][{_HYPHENS}]\s?$", regex.DOTALL)
+_HYPHENS_SPLIT_RE = regex.compile(rf"[{_HYPHENS}]\s?$")
+
+
+_C0_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
 
 def escape_dollars(text):
     return text.replace("$", r"\$")
 
 
 def cleanup_text(full_text):
+    full_text = _C0_CONTROL_RE.sub("", full_text)
     full_text = re.sub(r"\n{3,}", "\n\n", full_text)
     full_text = re.sub(r"(\n\s){3,}", "\n\n", full_text)
     return full_text.strip()
@@ -84,15 +91,12 @@ class Markdownify(MarkdownConverter):
             return text
 
     def convert_p(self, el, text, parent_tags):
-        hyphens = r"-—¬"
         has_continuation = el.has_attr("class") and "has-continuation" in el["class"]
         if has_continuation:
             block_type = BlockTypes[el["block-type"]]
             if block_type in [BlockTypes.TextInlineMath, BlockTypes.Text]:
-                if regex.compile(
-                    rf".*[\p{{Ll}}|\d][{hyphens}]\s?$", regex.DOTALL
-                ).match(text):  # handle hypenation across pages
-                    return regex.split(rf"[{hyphens}]\s?$", text)[0]
+                if _HYPHENS_MATCH_RE.match(text):  # handle hyphenation across pages
+                    return _HYPHENS_SPLIT_RE.split(text)[0]
                 return f"{text} "
             if block_type == BlockTypes.ListGroup:
                 return f"{text}"
@@ -138,9 +142,10 @@ class Markdownify(MarkdownConverter):
                 colspan = int(cell.get("colspan", 1))
                 row_cols += colspan
                 for r in range(int(cell.get("rowspan", 1)) - 1):
-                    rowspan_cols[i + r] += (
-                        colspan  # Add the colspan to the next rows, so they get the correct number of columns
-                    )
+                    if i + r + 1 < total_rows:
+                        rowspan_cols[i + r + 1] += (
+                            colspan  # Add the colspan to the next rows, so they get the correct number of columns
+                        )
             colspans.append(row_cols)
         total_cols = max(colspans) if colspans else 0
 
@@ -244,7 +249,7 @@ class Markdownify(MarkdownConverter):
         return text
 
     def process_text(self, el, parent_tags=None):
-        text = six.text_type(el) or ""
+        text = str(el) or ""
 
         # normalize whitespace if we're not inside a preformatted element
         if not el.find_parent("pre"):

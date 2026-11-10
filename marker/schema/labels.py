@@ -19,6 +19,7 @@ SURYA_LABEL_TO_BLOCK_TYPE = {
     "Table": BlockTypes.Table,
     "Form": BlockTypes.Form,
     "Equation": BlockTypes.Equation,
+    "Formula": BlockTypes.Equation,
     "ListGroup": BlockTypes.ListGroup,
     "TableOfContents": BlockTypes.TableOfContents,
     "ChemicalBlock": BlockTypes.ChemicalBlock,

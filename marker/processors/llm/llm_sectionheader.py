@@ -1,4 +1,5 @@
 import json
+import re
 from typing import List, Tuple
 
 from tqdm import tqdm
@@ -8,10 +9,10 @@ from marker.processors.llm import BaseLLMComplexBlockProcessor
 from marker.schema import BlockTypes
 from marker.schema.blocks import Block
 from marker.schema.document import Document
-from marker.schema.groups import PageGroup
 from pydantic import BaseModel
 
 logger = get_logger()
+HEADING_LEVEL_RE = re.compile(r"<h([1-6])\b", re.IGNORECASE)
 
 
 class LLMSectionHeaderProcessor(BaseLLMComplexBlockProcessor):
@@ -96,17 +97,26 @@ Section Headers
 ```
 """
 
-    def get_selected_blocks(
-        self,
-        document: Document,
-        page: PageGroup,
-    ) -> List[dict]:
-        selected_blocks = page.structure_blocks(document)
-        json_blocks = [
-            self.normalize_block_json(block, document, page, i)
-            for i, block in enumerate(selected_blocks)
-        ]
-        return json_blocks
+    def handle_rewrites(self, blocks: list, document: Document):
+        super().handle_rewrites(blocks, document)
+        for block_data in blocks:
+            try:
+                raw_id = block_data["id"].strip().lstrip("/")
+                _, page_id, block_type, block_id = raw_id.split("/")
+                from marker.schema.blocks import BlockId
+
+                bid = BlockId(
+                    page_id=int(page_id),
+                    block_id=int(block_id),
+                    block_type=getattr(BlockTypes, block_type),
+                )
+                block = document.get_block(bid)
+                if block and getattr(block, "html", None):
+                    m = HEADING_LEVEL_RE.search(block.html)
+                    if m:
+                        block.heading_level = int(m.group(1))
+            except Exception as e:
+                logger.debug(f"Error updating heading level for {block_data.get('id')}: {e}")
 
     def process_rewriting(
         self, document: Document, section_headers: List[Tuple[Block, dict]]

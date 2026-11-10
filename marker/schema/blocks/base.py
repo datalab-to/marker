@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
@@ -7,6 +8,11 @@ from PIL import Image
 
 from marker.schema import BlockTypes
 from marker.schema.polygon import PolygonBox
+
+_STARTS_WITH_BLOCK_TAG_RE = re.compile(
+    r"^<(?:p|div|h[1-6]|ul|ol|li|table|pre|blockquote|dl|figure|hr)\b",
+    re.IGNORECASE,
+)
 
 if TYPE_CHECKING:
     from marker.schema.document import Document
@@ -49,7 +55,7 @@ class BlockId(BaseModel):
         return f"/page/{self.page_id}/{self.block_type.name}/{self.block_id}"
 
     def __hash__(self):
-        return hash(str(self))
+        return hash((self.page_id, self.block_id, self.block_type))
 
     def __repr__(self):
         return str(self)
@@ -104,6 +110,7 @@ class Block(BaseModel):
     highres_image: Image.Image | None = None
     removed: bool = False  # Has block been replaced by new block?
     _structure_index: Optional[dict] = PrivateAttr(default=None)
+    _cached_id: Optional[BlockId] = PrivateAttr(default=None)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -128,9 +135,19 @@ class Block(BaseModel):
 
     @property
     def id(self) -> BlockId:
-        return BlockId(
+        cached = self._cached_id
+        if (
+            cached is not None
+            and cached.page_id == self.page_id
+            and cached.block_id == self.block_id
+            and cached.block_type == self.block_type
+        ):
+            return cached
+        cached = BlockId.model_construct(
             page_id=self.page_id, block_id=self.block_id, block_type=self.block_type
         )
+        self._cached_id = cached
+        return cached
 
     def get_image(
         self,
@@ -273,19 +290,34 @@ class Block(BaseModel):
     def contained_blocks(
         self, document: Document, block_types: Sequence[BlockTypes] = None
     ) -> List[Block]:
-        if self.structure is None:
+        if not self.structure:
             return []
+
+        type_set = (
+            block_types
+            if isinstance(block_types, (set, frozenset))
+            else (frozenset(block_types) if block_types is not None else None)
+        )
+        want_span_or_char = type_set is None or (
+            BlockTypes.Span in type_set or BlockTypes.Char in type_set
+        )
+        want_char = type_set is None or BlockTypes.Char in type_set
 
         blocks = []
         for block_id in self.structure:
             block = document.get_block(block_id)
             if block.removed:
                 continue
-            if (
-                block_types is None or block.block_type in block_types
-            ) and not block.removed:
+            btype = block.block_type
+            if type_set is None or btype in type_set:
                 blocks.append(block)
-            blocks += block.contained_blocks(document, block_types)
+            if not block.structure:
+                continue
+            if btype == BlockTypes.Line and not want_span_or_char:
+                continue
+            if btype == BlockTypes.Span and not want_char:
+                continue
+            blocks.extend(block.contained_blocks(document, type_set))
         return blocks
 
     def replace_block(self, block: Block, new_block: Block):
@@ -321,7 +353,7 @@ class Block(BaseModel):
                 )  # Update the section hierarchy from the peer blocks
                 child_content.append(rendered)
 
-        return BlockOutput(
+        return BlockOutput.model_construct(
             html=self.assemble_html(
                 document, child_content, parent_structure, block_config
             ),
@@ -353,6 +385,8 @@ class Block(BaseModel):
     def handle_html_output(
         self, document, child_blocks, parent_structure, block_config=None
     ):
+        if self.ignore_for_output:
+            return ""
         if block_config is None:
             block_config = {}
 
@@ -364,4 +398,10 @@ class Block(BaseModel):
         html = Block.assemble_html(
             self, document, child_ref_blocks, parent_structure, block_config
         )
-        return html + self.html
+        body = (self.html or "").strip()
+        if body and not _STARTS_WITH_BLOCK_TAG_RE.match(body):
+            el_attr = f" block-type='{self.block_type}'" if self.block_type else ""
+            if getattr(self, "has_continuation", False):
+                el_attr += " class='has-continuation'"
+            body = f"<p{el_attr}>{body}</p>"
+        return html + body

@@ -28,6 +28,15 @@ class DocumentBuilder(BaseBuilder):
         bool,
         "Disable OCR processing.",
     ] = False
+    mode: Annotated[
+        str,
+        "Conversion mode ('no_ocr' | 'fast' | 'indra' | 'balanced' | 'vllm').",
+    ] = "balanced"
+
+    def __init__(self, config=None):
+        super().__init__(config)
+        if self.mode == "no_ocr":
+            self.disable_ocr = True
 
     # Block types whose default-path processors crop the high-res image:
     # TableProcessor (Table/TableOfContents/Form) and EquationProcessor
@@ -53,6 +62,11 @@ class DocumentBuilder(BaseBuilder):
         ocr_builder: OcrBuilder,
     ):
         document = self.build_document(provider)
+        if not self.disable_ocr and ocr_builder.can_convert_pdf_with_indra(
+            provider, layout_builder
+        ):
+            ocr_builder.convert_pdf_with_indra(document, provider)
+            return document
         layout_builder(document, provider)
         line_builder(document, provider)
         # Now that layout + the OCR decision are known, render high-res only for
@@ -65,7 +79,11 @@ class DocumentBuilder(BaseBuilder):
         return document
 
     def page_needs_highres(self, page: PageGroup) -> bool:
-        if page.text_extraction_method == "surya":
+        if page.text_extraction_method == "surya" or self.mode in (
+            "vllm",
+            "surya",
+            "accurate",
+        ):
             return True
         highres_types = set(self.highres_block_types)
         return any(block.block_type in highres_types for block in (page.children or []))

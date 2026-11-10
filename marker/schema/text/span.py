@@ -13,6 +13,18 @@ def cleanup_text(full_text):
     return full_text
 
 
+_SAFE_URL_RE = re.compile(r"^(?:https?://|mailto:|#|/)", re.IGNORECASE)
+
+
+def sanitize_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    stripped = url.strip()
+    if not _SAFE_URL_RE.match(stripped):
+        return None
+    return html.escape(stripped, quote=True)
+
+
 class Span(Block):
     block_type: BlockTypes = BlockTypes.Span
     block_description: str = "A span of text inside a line."
@@ -114,33 +126,34 @@ class Span(Block):
             if "<sup>" not in text:
                 text = f"<sup>{text}</sup>"
 
-        if self.url:
-            text = f"<a href='{self.url}'>{text}</a>"
+        safe_url = sanitize_url(self.url)
+        if safe_url:
+            text = f"<a href='{safe_url}'>{text}</a>"
 
-        # TODO Support multiple formats
-        if self.italic:
-            text = f"<i>{text}</i>"
-        elif self.bold:
-            text = f"<b>{text}</b>"
-        elif self.math:
+        if self.math:
             block_envs = ["split", "align", "gather", "multline"]
             if any(f"\\begin{{{env}}}" in text for env in block_envs):
                 display_mode = "block"
             else:
                 display_mode = "inline"
             text = f"<math display='{display_mode}'>{text}</math>"
-        elif self.highlight:
-            text = f"<mark>{text}</mark>"
-        elif self.subscript:
-            text = f"<sub>{text}</sub>"
-        elif self.superscript:
-            text = f"<sup>{text}</sup>"
-        elif self.underline:
-            text = f"<u>{text}</u>"
-        elif self.small:
-            text = f"<small>{text}</small>"
-        elif self.code:
-            text = f"<code>{text}</code>"
+        else:
+            if self.code:
+                text = f"<code>{text}</code>"
+            if self.small:
+                text = f"<small>{text}</small>"
+            if self.underline:
+                text = f"<u>{text}</u>"
+            if self.subscript:
+                text = f"<sub>{text}</sub>"
+            elif self.superscript and not self.has_superscript:
+                text = f"<sup>{text}</sup>"
+            if self.highlight:
+                text = f"<mark>{text}</mark>"
+            if self.italic:
+                text = f"<i>{text}</i>"
+            if self.bold:
+                text = f"<b>{text}</b>"
 
         text = unwrap_math(text)
         return text

@@ -43,14 +43,14 @@ python -m olmocr.bench.download
 `bench_data/` then contains `pdfs/<category>/*.pdf` and the per-category
 `*.jsonl` test files. Pass that `bench_data` path as `--bench-dir` below.
 
-## 2. Start a surya inference server (marker balanced/fast only)
+## 2. Start a surya inference server (marker balanced / vllm modes)
 
-Marker's balanced and fast modes offload VLM / layout work to a shared surya
-server; the benchmark workers hold only small CPU models and talk to it over
+Marker's `balanced` and `vllm` modes offload VLM OCR work to a shared Surya
+server; the benchmark workers hold only small CPU/ONNX models and talk to it over
 HTTP. Start one (see the surya docs), note its URL, and pass it with
 `--surya-url` (or export `SURYA_INFERENCE_URL`). Give the server the GPU; run
-the marker workers as thin CPU processes. `fast --disable-ocr` uses no VLM and
-needs no server.
+the marker workers as thin CPU processes. `fast` and `no_ocr` modes run
+in-process Indra ONNX layout/OCR on CPU and need no external server.
 
 ## 3. Run marker + measure throughput
 
@@ -58,20 +58,24 @@ needs no server.
 BENCH=/path/to/olmocr/olmocr/bench/bench_data
 SURYA=http://localhost:8000/v1
 
-# balanced  (VLM layout + full-page OCR)
-python benchmarks/inference.py --bench-dir $BENCH --out /tmp/marker_balanced \
+# balanced  (smart routing: pdftext + Indra ONNX on clean prose, Surya VLM on tables/math/CJK/scans)
+python benchmarks/inference.py --bench-dir $BENCH --out ./out_marker_balanced \
     --mode balanced --workers 48 --surya-url $SURYA
 
-# fast  (rf-detr layout + pdftext, VLM for equations only)
-python benchmarks/inference.py --bench-dir $BENCH --out /tmp/marker_fast \
-    --mode fast --workers 32 --surya-url $SURYA
+# vllm  (full-page Surya VLM OCR on every page)
+python benchmarks/inference.py --bench-dir $BENCH --out ./out_marker_vllm \
+    --mode vllm --workers 48 --surya-url $SURYA
 
-# fast, no OCR  (pure CPU text layer, no VLM)
-python benchmarks/inference.py --bench-dir $BENCH --out /tmp/marker_fast_noocr \
-    --mode fast --disable-ocr --workers 32
+# fast  (in-process Indra ONNX layout + ONNX OCR on CPU, no VLM server needed)
+python benchmarks/inference.py --bench-dir $BENCH --out ./out_marker_fast \
+    --mode fast --workers 32
 
-# accurate  (balanced + LLM refinement; needs an LLM service configured)
-python benchmarks/inference.py --bench-dir $BENCH --out /tmp/marker_accurate \
+# no_ocr  (pure CPU text layer + Indra ONNX layout, zero OCR calls)
+python benchmarks/inference.py --bench-dir $BENCH --out ./out_marker_noocr \
+    --mode no_ocr --workers 32
+
+# balanced + LLM  (balanced + LLM refinement; needs an LLM service configured)
+python benchmarks/inference.py --bench-dir $BENCH --out ./out_marker_llm \
     --mode balanced --use-llm --workers 32 --surya-url $SURYA
 ```
 

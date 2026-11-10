@@ -80,7 +80,9 @@ def _init(
     lock = open("/tmp/marker_bench_init.lock", "w")
     fcntl.flock(lock, fcntl.LOCK_EX)
     try:
-        models = create_model_dict()
+        no_server = mode in ("fast", "indra", "no_ocr") and not surya_url
+        load_indra = mode not in ("vllm", "surya", "accurate")
+        models = create_model_dict(load_indra=load_indra, no_server=no_server)
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
@@ -130,12 +132,18 @@ def _work(pdf):
         start = time.monotonic()
         err = ""
         try:
+            if n_pages > 1:
+                _CONV.config["page_range"] = [page - 1]
+            else:
+                _CONV.config.pop("page_range", None)
             md, _, _ = text_from_rendered(_CONV(pdf))
             if _NORMALIZE:
                 md = _postprocess(md)
         except Exception as e:  # keep going; record the failure per page
             md, err = "", f"{type(e).__name__}: {e}"
             traceback.print_exc()
+        finally:
+            _CONV.config.pop("page_range", None)
         elapsed_ms = (time.monotonic() - start) * 1000
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(md or "")
@@ -161,7 +169,11 @@ def main():
         help="olmOCR-bench bench_data dir (contains the PDFs subdir)",
     )
     ap.add_argument("--out", required=True, help="output dir for per-page markdown")
-    ap.add_argument("--mode", choices=["fast", "balanced"], default="balanced")
+    ap.add_argument(
+        "--mode",
+        choices=["fast", "balanced", "indra", "no_ocr", "vllm", "surya", "accurate"],
+        default="balanced",
+    )
     ap.add_argument(
         "--disable-ocr",
         action="store_true",

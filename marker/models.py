@@ -1,8 +1,62 @@
-from surya.fast_layout import FastLayoutPredictor
+import os
+import tempfile
+from pathlib import Path
+
 from surya.inference import SuryaInferenceManager
-from surya.layout import LayoutPredictor
-from surya.ocr_error import OCRErrorPredictor
 from surya.recognition import RecognitionPredictor
+
+from marker.ocr import IndraRecognitionPredictor
+
+
+def _ensure_surya_cache_writable() -> None:
+    """Redirect Surya's server lock/log directory if ~/.cache is not writable (e.g. read-only HOME containers)."""
+    default_dir = Path(os.path.expanduser("~/.cache/datalab/surya"))
+    try:
+        default_dir.mkdir(parents=True, exist_ok=True)
+        probe = default_dir / ".write_probe"
+        probe.touch()
+        probe.unlink()
+        return
+    except OSError:
+        pass
+
+    fallback_base = Path(
+        os.environ.get("XDG_CACHE_HOME") or tempfile.gettempdir()
+    )
+    fallback_dir = fallback_base / "datalab" / "surya"
+    fallback_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import surya.inference.backends.spawn as surya_spawn
+
+        surya_spawn._cache_dir = lambda: fallback_dir
+        orig_attach_or_spawn = surya_spawn.attach_or_spawn
+
+        def _patched_attach_or_spawn(*args, **kwargs):
+            old_home = os.environ.get("HOME")
+            os.environ["HOME"] = str(
+                fallback_base.parent
+                if fallback_base.name == ".cache"
+                else fallback_base
+            )
+            try:
+                return orig_attach_or_spawn(*args, **kwargs)
+            finally:
+                if old_home is not None:
+                    os.environ["HOME"] = old_home
+
+        surya_spawn.attach_or_spawn = _patched_attach_or_spawn
+        try:
+            import surya.inference.backends.llamacpp as surya_llamacpp
+
+            surya_llamacpp.attach_or_spawn = _patched_attach_or_spawn
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+_ensure_surya_cache_writable()
 
 
 def create_model_dict(
@@ -11,53 +65,35 @@ def create_model_dict(
     attention_implementation: str | None = None,
     inference_manager: SuryaInferenceManager | None = None,
     inference_backend: str | None = None,
+    load_indra: bool = True,
+    no_server: bool = False,
 ) -> dict:
-    """Build the predictor set marker uses.
-
-    Two converter modes share this set:
-      - balanced (default): the VLM ``layout_model`` + full-page
-        ``recognition_model``.
-      - fast: the lightweight rf-detr ``fast_layout_model`` + block-mode OCR,
-        OCRing only garbled/empty content.
-
-    All the heavy models run in shared surya servers, so every predictor here is
-    a thin client and marker worker processes stay light (this is what lets many
-    workers share one GPU without each loading a model):
-      - ``layout_model`` / ``recognition_model``: clients of the VLM
-        ``inference_manager`` (lazy - only spawns a server when OCR is actually
-        needed, so clean digital docs in fast mode never start it).
-      - ``fast_layout_model``: a client of the shared fast-layout server (owns
-        the single rf-detr instance + continuous-batches across all clients).
-        Holds no model; spawns/attaches the server on first call, not here.
-      - ``ocr_error_model``: a client of the shared ocr-error server (the
-        DistilBert model runs in one server process; workers POST text to it).
-
-    Every predictor here is now a thin server client, so marker worker
-    processes hold NO models and many can share one GPU without each loading a
-    copy. Tables are reconstructed from the PDF text layer (pdftext heuristics)
-    for digital pages and from full-page OCR for scanned pages - there is no
-    dedicated table model. ``device``/``dtype``/``attention_implementation`` are
-    accepted for call-site compatibility (e.g. worker_init) but are now no-ops -
-    model devices are set server-side.
+    """Build the minimal predictor set marker uses across its four modes:
+      - ``no_ocr`` (or ``disable_ocr=True``): embedded PDF text layer +
+        lightweight in-process Indra ONNX layout & reading-order head.
+      - ``fast`` / ``indra``: in-process Indra line-level ONNX OCR for any
+        garbled/missing blocks or scanned pages (no external servers).
+      - ``balanced``: smart routing — in-process Indra layout + embedded PDF
+        text when clean, with Surya VLM OCR (``recognition_model``) for
+        tables, math, and scanned/garbled pages.
+      - ``vllm`` (or ``surya`` / ``accurate``): pure VLM mode — runs full-page
+        Surya VLM OCR on every page, skipping pdftext and Indra entirely.
     """
+    _ensure_surya_cache_writable()
     manager = inference_manager or SuryaInferenceManager(method=inference_backend)
+    indra = IndraRecognitionPredictor() if load_indra else None
+    rec = RecognitionPredictor(manager)
     return {
         "inference_manager": manager,
-        "layout_model": LayoutPredictor(manager),
-        # Thin client of the shared fast-layout server (holds no model; the
-        # server owns the one rf-detr instance and continuous-batches across
-        # workers). Cheap to construct even in balanced mode, where it is never
-        # called. The reading-order head defaults off: pdftext pages are
-        # reordered from the PDF's character order (LineBuilder), so learned
-        # order is requested per call only for the pages that need it.
-        "fast_layout_model": FastLayoutPredictor(use_order=False),
-        "recognition_model": RecognitionPredictor(manager),
-        # Thin client of the shared ocr-error server (the DistilBert model runs
-        # in one server process; N marker workers just POST text to it). Holds
-        # no model, so it doesn't add per-worker GPU load. device/dtype/
-        # attention_implementation are server-side now and ignored here (kept in
-        # the signature for call-site compatibility, e.g. worker_init).
-        "ocr_error_model": OCRErrorPredictor(),
+        "recognition_model": rec,
+        "layout_model": indra,
+        "fast_layout_model": indra,
+        "ocr_error_model": None,
+        **(
+            {"indra_model": indra}
+            if load_indra
+            else {}
+        ),
     }
 
 

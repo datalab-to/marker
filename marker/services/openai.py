@@ -101,7 +101,12 @@ class OpenAIService(BaseService):
                     response_format=response_schema,
                 )
                 response_text = response.choices[0].message.content
-                total_tokens = response.usage.total_tokens
+                total_tokens = (
+                    response.usage.total_tokens
+                    if getattr(response, "usage", None) is not None
+                    and getattr(response.usage, "total_tokens", None) is not None
+                    else 0
+                )
                 if block:
                     block.update_metadata(
                         llm_tokens_used=total_tokens, llm_request_count=1

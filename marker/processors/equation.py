@@ -7,6 +7,7 @@ from surya.layout.schema import LayoutBox, LayoutResult
 from surya.recognition import RecognitionPredictor
 
 from marker.logger import get_logger
+from marker.ocr import IndraRecognitionPredictor, select_recognition_model
 from marker.processors import BaseProcessor
 from marker.schema import BlockTypes
 from marker.schema.document import Document
@@ -29,7 +30,7 @@ class EquationProcessor(BaseProcessor):
     equation_token_budget: Annotated[
         int,
         "Token budget for recognizing a single equation block.",
-    ] = 2000
+    ] = 8192
     disable_tqdm: Annotated[
         bool,
         "Whether to disable the tqdm progress bar.",
@@ -44,7 +45,11 @@ class EquationProcessor(BaseProcessor):
         "represent math, so equations have no text-layer substitute. Set False",
         "to skip; disable_ocr also disables this.",
     ] = True
-    mode: Annotated[str, "Conversion mode ('balanced' | 'fast')."] = "balanced"
+    mode: Annotated[str, "Conversion mode ('balanced' | 'fast' | 'indra')."] = "balanced"
+    ocr_backend: Annotated[
+        str,
+        "OCR backend: 'auto' (Indra ONNX in fast mode, Surya VLM in balanced mode), 'indra', or 'surya'.",
+    ] = "auto"
     ocr_inline_math: Annotated[
         bool,
         "OCR text blocks that appear to contain inline math (pdftext extracts",
@@ -70,15 +75,36 @@ class EquationProcessor(BaseProcessor):
         "blocks (math-heavy docs scatter inline math everywhere).",
     ] = 0.3
 
-    def __init__(self, recognition_model: RecognitionPredictor, config=None):
+    def __init__(
+        self,
+        recognition_model: RecognitionPredictor,
+        config=None,
+        indra_model: IndraRecognitionPredictor = None,
+    ):
         super().__init__(config)
+        if self.mode == "no_ocr":
+            self.disable_ocr = True
 
         self.recognition_model = recognition_model
+        self.indra_model = indra_model
+
+    def get_recognition_model(self, full_page: bool = False):
+        return select_recognition_model(
+            self.recognition_model,
+            self.indra_model,
+            self.mode,
+            self.ocr_backend,
+            full_page=full_page,
+        )
 
     def _inline_math_enabled(self) -> bool:
         if self.ocr_inline_math is not None:
             return self.ocr_inline_math
-        return self.mode == "balanced"
+        return (
+            not self.disable_ocr
+            and self.mode == "balanced"
+            and not isinstance(self.get_recognition_model(), IndraRecognitionPredictor)
+        )
 
     def __call__(self, document: Document):
         if self.disable_ocr or not self.ocr_equations:
@@ -140,10 +166,24 @@ class EquationProcessor(BaseProcessor):
         if not images:
             return
 
-        self.recognition_model.disable_tqdm = self.disable_tqdm
-        recognition_results = self.recognition_model(
-            images=images, layout_results=layout_results, full_page=False
-        )
+        rec_model = self.get_recognition_model()
+        rec_model.disable_tqdm = self.disable_tqdm
+        try:
+            recognition_results = rec_model(
+                images=images, layout_results=layout_results, full_page=False
+            )
+        except Exception as exc:
+            if (
+                self.mode not in ("vllm", "surya", "accurate")
+                and self.indra_model is not None
+                and rec_model is not self.indra_model
+                and type(exc).__name__ == "SpawnError"
+            ):
+                recognition_results = self.indra_model(
+                    images=images, layout_results=layout_results, full_page=False
+                )
+            else:
+                raise
 
         for page_block_ids, page_result in zip(block_ids, recognition_results):
             assert len(page_block_ids) == len(page_result.blocks), (
@@ -154,15 +194,15 @@ class EquationProcessor(BaseProcessor):
                     logger.warning(f"Equation recognition failed for {block_id}")
                     continue
                 block = document.get_block(block_id)
+                for child in block.contained_blocks(
+                    document, (BlockTypes.Line, BlockTypes.Span)
+                ):
+                    child.removed = True
+                block.structure = []
                 if block.block_type == BlockTypes.Equation:
                     block.html = self.fix_latex(block_result.html)
-                elif block.block_type == BlockTypes.ChemicalBlock:
-                    block.html = block_result.html.strip()
                 else:
-                    # Inline-math text block: html carries inline <math>; drop the
-                    # pdftext line/span structure so the html leaf is rendered.
                     block.html = block_result.html.strip()
-                    block.structure = []
 
     # Math-specific font-name hints (TeX math italics/symbols, AMS, STIX, etc.).
     _MATH_FONT_HINTS = (

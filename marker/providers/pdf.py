@@ -72,6 +72,10 @@ class PdfProvider(BaseProvider):
         bool,
         "Whether to strip existing OCR text from the PDF.",
     ] = False
+    disable_ocr: Annotated[
+        bool,
+        "Whether OCR is disabled.",
+    ] = False
     disable_links: Annotated[
         bool,
         "Whether to disable links.",
@@ -95,10 +99,6 @@ class PdfProvider(BaseProvider):
 
         with self.get_doc() as doc:
             self.page_count = len(doc)
-            self.page_lines: ProviderPageLines = {i: [] for i in range(len(doc))}
-            self.page_refs: Dict[int, List[Reference]] = {
-                i: [] for i in range(len(doc))
-            }
 
             if self.page_range is None:
                 self.page_range = range(len(doc))
@@ -106,6 +106,11 @@ class PdfProvider(BaseProvider):
             assert max(self.page_range) < len(doc) and min(self.page_range) >= 0, (
                 f"Invalid page range, values must be between 0 and {len(doc) - 1}.  Min of provided page range is {min(self.page_range)} and max is {max(self.page_range)}."
             )
+
+            self.page_lines: ProviderPageLines = {i: [] for i in self.page_range}
+            self.page_refs: Dict[int, List[Reference]] = {
+                i: [] for i in self.page_range
+            }
 
             if self.force_ocr:
                 # Manually assign page bboxes, since we can't get them from pdftext
@@ -253,7 +258,12 @@ class PdfProvider(BaseProvider):
                         )
                         superscript = span.get("superscript", False)
                         subscript = span.get("subscript", False)
-                        text = self.normalize_spaces(fix_text(span["text"]))
+                        raw_span_text = span["text"]
+                        text = self.normalize_spaces(
+                            raw_span_text
+                            if raw_span_text.isascii()
+                            else fix_text(raw_span_text)
+                        )
                         if superscript or subscript:
                             text = text.strip()
 
@@ -318,10 +328,7 @@ class PdfProvider(BaseProvider):
         if len(page_spans) == 0:
             return False
 
-        text = ""
-        for span in page_spans:
-            text = text + " " + span.text
-            text = text + "\n"
+        text = "\n".join(f" {span.text}" for span in page_spans) + "\n"
         if len(text.strip()) == 0:
             return False
         if self.detect_bad_ocr(text):
@@ -341,45 +348,56 @@ class PdfProvider(BaseProvider):
             # Happens when pdfium fails to get the number of page objects
             return False
 
+        text_objs = [
+            obj for obj in page_objs if obj.type == pdfium_c.FPDF_PAGEOBJ_TEXT
+        ]
         # if we do not see any text objects in the pdf, we can skip this page
-        if not any([obj.type == pdfium_c.FPDF_PAGEOBJ_TEXT for obj in page_objs]):
+        if not text_objs:
             return False
 
+        if not self.disable_ocr and not self.strip_existing_ocr:
+            inv_count = sum(
+                1
+                for text_obj in text_objs
+                if pdfium_c.FPDFTextObj_GetTextRenderMode(
+                    text_obj.raw if hasattr(text_obj, "raw") else text_obj
+                )
+                == pdfium_c.FPDF_TEXTRENDERMODE_INVISIBLE
+            )
+            if inv_count > 0.05 * len(text_objs):
+                return False
+
         if self.strip_existing_ocr:
-            # If any text objects on the page are in invisible render mode, skip this page
-            for text_obj in filter(
-                lambda obj: obj.type == pdfium_c.FPDF_PAGEOBJ_TEXT, page_objs
-            ):
+            non_embedded_fonts = []
+            empty_fonts = []
+            font_cache = {}
+            for text_obj in text_objs:
                 if pdfium_c.FPDFTextObj_GetTextRenderMode(text_obj) in [
                     pdfium_c.FPDF_TEXTRENDERMODE_INVISIBLE,
                     pdfium_c.FPDF_TEXTRENDERMODE_UNKNOWN,
                 ]:
                     return False
 
-            non_embedded_fonts = []
-            empty_fonts = []
-            font_map = {}
-            for text_obj in filter(
-                lambda obj: obj.type == pdfium_c.FPDF_PAGEOBJ_TEXT, page_objs
-            ):
                 font = pdfium_c.FPDFTextObj_GetFont(text_obj)
-                font_name = self._get_fontname(font)
+                font_key = int(ctypes.cast(font, ctypes.c_void_p).value or 0)
+                if font_key not in font_cache:
+                    font_name = self._get_fontname(font)
+                    is_non_embedded = pdfium_c.FPDFFont_GetIsEmbedded(font) == 0
+                    is_empty = "glyphless" in font_name.lower()
+                    font_cache[font_key] = (is_non_embedded, is_empty)
+                else:
+                    is_non_embedded, is_empty = font_cache[font_key]
 
-                # we also skip pages without embedded fonts and fonts without names
-                non_embedded_fonts.append(pdfium_c.FPDFFont_GetIsEmbedded(font) == 0)
-                empty_fonts.append(
-                    "glyphless" in font_name.lower()
-                )  # Add font name check back in when we bump pypdfium2
-                if font_name not in font_map:
-                    font_map[font_name or "Unknown"] = font
+                non_embedded_fonts.append(is_non_embedded)
+                empty_fonts.append(is_empty)
 
             if all(non_embedded_fonts) or all(empty_fonts):
                 return False
 
             # if we see very large images covering most of the page, we can skip this page
-            for img_obj in filter(
-                lambda obj: obj.type == pdfium_c.FPDF_PAGEOBJ_IMAGE, page_objs
-            ):
+            for img_obj in page_objs:
+                if img_obj.type != pdfium_c.FPDF_PAGEOBJ_IMAGE:
+                    continue
                 img_bbox = PolygonBox.from_bbox(img_obj.get_pos())
                 if page_bbox.intersection_pct(img_bbox) >= self.image_threshold:
                     return False

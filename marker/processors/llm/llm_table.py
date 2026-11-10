@@ -172,10 +172,13 @@ score: 5
             if batch_parsed_cells is None:
                 return  # Error occurred or no corrections needed
 
+            batch_max_row = (
+                max((cell.row_id for cell in batch_parsed_cells), default=-1) + 1
+            )
             for cell in batch_parsed_cells:
                 cell.row_id += row_shift
                 parsed_cells.append(cell)
-            row_shift += max([cell.row_id for cell in batch_parsed_cells])
+            row_shift += batch_max_row
 
         block.structure = []
         for cell in parsed_cells:
@@ -205,7 +208,11 @@ score: 5
                 return
 
             corrected_html = (
-                corrected_html.strip().lstrip("```html").rstrip("```").strip()
+                corrected_html.strip()
+                .removeprefix("```html")
+                .removeprefix("```")
+                .removesuffix("```")
+                .strip()
             )
             if not corrected_html.endswith("</table>"):
                 block.update_metadata(llm_error_count=1)
@@ -246,7 +253,13 @@ score: 5
         if "no corrections needed" in corrected_html.lower():
             return
 
-        corrected_html = corrected_html.strip().lstrip("```html").rstrip("```").strip()
+        corrected_html = (
+            corrected_html.strip()
+            .removeprefix("```html")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
 
         # Re-iterate if low score
         total_iterations += 1

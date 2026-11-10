@@ -1,7 +1,9 @@
+import html as html_lib
 import os
 import tempfile
 
 from marker.providers.pdf import PdfProvider
+from marker.providers.utils import safe_weasyprint_url_fetcher, validate_zip_archive
 
 css = """
 @page {
@@ -36,16 +38,25 @@ class SpreadSheetProvider(PdfProvider):
 
         # Convert XLSX to PDF
         try:
+            validate_zip_archive(filepath)
             self.convert_xlsx_to_pdf(filepath)
+            super().__init__(self.temp_pdf_path, config)
         except Exception as e:
-            raise RuntimeError(f"Failed to convert {filepath} to PDF: {e}")
+            self._cleanup_temp_pdf()
+            raise RuntimeError(f"Failed to convert {filepath} to PDF: {e}") from e
 
-        # Initialize the PDF provider with the temp pdf path
-        super().__init__(self.temp_pdf_path, config)
+    def _cleanup_temp_pdf(self):
+        if getattr(self, "temp_pdf_path", None) and os.path.exists(self.temp_pdf_path):
+            try:
+                os.remove(self.temp_pdf_path)
+            except OSError:
+                pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._cleanup_temp_pdf()
 
     def __del__(self):
-        if os.path.exists(self.temp_pdf_path):
-            os.remove(self.temp_pdf_path)
+        self._cleanup_temp_pdf()
 
     def convert_xlsx_to_pdf(self, filepath: str):
         from weasyprint import CSS, HTML
@@ -56,8 +67,9 @@ class SpreadSheetProvider(PdfProvider):
         if workbook is not None:
             for sheet_name in workbook.sheetnames:
                 sheet = workbook[sheet_name]
+                escaped_sheet = html_lib.escape(str(sheet_name))
                 html += (
-                    f"<div><h1>{sheet_name}</h1>"
+                    f"<div><h1>{escaped_sheet}</h1>"
                     + self._excel_to_html_table(sheet)
                     + "</div>"
                 )
@@ -65,7 +77,10 @@ class SpreadSheetProvider(PdfProvider):
             raise ValueError("Invalid XLSX file")
 
         # We convert the HTML into a PDF
-        HTML(string=html).write_pdf(
+        HTML(
+            string=html,
+            url_fetcher=safe_weasyprint_url_fetcher,
+        ).write_pdf(
             self.temp_pdf_path, stylesheets=[CSS(string=css), self.get_font_css()]
         )
 
@@ -105,11 +120,19 @@ class SpreadSheetProvider(PdfProvider):
                                 skip_cells.add((r, c))
 
                     # Add merged cell with rowspan/colspan
-                    value = cell.value if cell.value is not None else ""
+                    value = (
+                        html_lib.escape(str(cell.value))
+                        if cell.value is not None
+                        else ""
+                    )
                     html += f'<td rowspan="{merge_info["rowspan"]}" colspan="{merge_info["colspan"]}">{value}'
                 else:
                     # Regular cell
-                    value = cell.value if cell.value is not None else ""
+                    value = (
+                        html_lib.escape(str(cell.value))
+                        if cell.value is not None
+                        else ""
+                    )
                     html += f"<td>{value}"
 
                 html += "</td>"

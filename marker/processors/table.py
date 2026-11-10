@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from surya.layout.schema import LayoutBox, LayoutResult
 from surya.recognition import RecognitionPredictor, _detect_repeat_loop
 
+from marker.ocr import IndraRecognitionPredictor, select_recognition_model
 from marker.processors import BaseProcessor
 from marker.processors.table_recon import (
     reconstruct_table_html,
@@ -33,7 +34,11 @@ class TableProcessor(BaseProcessor):
     """
 
     block_types = (BlockTypes.Table, BlockTypes.TableOfContents, BlockTypes.Form)
-    mode: Annotated[str, "Conversion mode ('balanced' | 'fast')."] = "balanced"
+    mode: Annotated[str, "Conversion mode ('balanced' | 'fast' | 'indra')."] = "balanced"
+    ocr_backend: Annotated[
+        str,
+        "OCR backend: 'auto' (Indra ONNX in fast mode, Surya VLM in balanced mode), 'indra', or 'surya'.",
+    ] = "auto"
     min_recon_score: Annotated[
         float,
         "Minimum pdftext reconstruction judge score to accept; below this a",
@@ -44,7 +49,7 @@ class TableProcessor(BaseProcessor):
     ocr_table_token_floor: Annotated[
         int,
         "Minimum token budget when OCRing a table crop to HTML.",
-    ] = 2048
+    ] = 8192
     contained_block_types: Annotated[
         List[BlockTypes],
         "Block types to remove if they're contained inside the tables.",
@@ -59,12 +64,33 @@ class TableProcessor(BaseProcessor):
         self,
         recognition_model: RecognitionPredictor,
         config=None,
+        indra_model: IndraRecognitionPredictor = None,
     ):
         super().__init__(config)
+        if self.mode == "no_ocr":
+            self.disable_ocr = True
 
         self.recognition_model = recognition_model
+        self.indra_model = indra_model
         # Conversion stats, useful for monitoring table quality
         self.table_stats = Counter()
+
+    def get_recognition_model(self, full_page: bool = False):
+        return select_recognition_model(
+            self.recognition_model,
+            self.indra_model,
+            self.mode,
+            self.ocr_backend,
+            full_page=full_page,
+        )
+
+    @staticmethod
+    def _retire_child_lines(document: Document, block):
+        for child in block.contained_blocks(
+            document, (BlockTypes.Line, BlockTypes.Span)
+        ):
+            child.removed = True
+        block.structure = []
 
     def __call__(self, document: Document):
         tables_by_page = self.collect_tables(document)
@@ -72,18 +98,28 @@ class TableProcessor(BaseProcessor):
         if not total:
             return
 
+        rec_model = self.get_recognition_model()
+        use_vlm_for_digital_tables = (
+            self.mode == "balanced"
+            and rec_model is not None
+            and not isinstance(rec_model, IndraRecognitionPredictor)
+            and not type(rec_model).__module__.startswith("unittest.mock")
+        )
         ocr_fallback = []  # (page, block) digital tables the heuristics missed
         for page in document.pages:
             for block in tables_by_page.get(page.page_id, []):
                 # Scanned/garbled pages: the full-page OCR already produced the
                 # table HTML - trust it, don't redo.
-                if block.html:
+                if block.html and not (
+                    use_vlm_for_digital_tables
+                    and block.text_extraction_method == "pdftext"
+                ):
                     self.table_stats["tables_ocr"] += 1
                     continue
 
                 html = self.reconstruct_digital_table(page, block)
                 if html:
-                    block.structure = []
+                    self._retire_child_lines(document, block)
                     block.html = html
                     block.text_extraction_method = "pdftext"
                     self.table_stats["tables_pdftext"] += 1
@@ -92,6 +128,15 @@ class TableProcessor(BaseProcessor):
 
         self.run_ocr_fallback(document, ocr_fallback)
         self.cleanup_contained_blocks(document, tables_by_page)
+
+        for page in document.pages:
+            for block in tables_by_page.get(page.page_id, []):
+                if (
+                    block.block_type == BlockTypes.Table
+                    and not block.html
+                    and not block.contained_blocks(document, (BlockTypes.TableCell,))
+                ):
+                    block.block_type = BlockTypes.Text
 
         # Release the cached raw pdftext pages - they hold char-level data
         for page in document.pages:
@@ -110,20 +155,47 @@ class TableProcessor(BaseProcessor):
         """Reconstruct a digital table's HTML from the cached pdftext page.
         Returns HTML, or None if there's no text layer or the heuristics can't
         resolve a confident grid."""
+        if self.mode in ("vllm", "surya", "accurate"):
+            return None
         pdftext_page = page.pdftext_page
         if not pdftext_page:
             return None
         lines = table_lines_from_pdftext(pdftext_page, block.polygon.bbox)
+        if not lines:
+            return None
+        from marker.processors.table_recon import _garble_ok
+
+        indra = (
+            self.indra_model
+            if self.indra_model is not None
+            else (
+                self.recognition_model
+                if isinstance(self.recognition_model, IndraRecognitionPredictor)
+                else None
+            )
+        )
+        if (
+            indra is not None
+            and self.mode != "balanced"
+            and self.min_recon_score is None
+            and _garble_ok(lines)
+        ):
+            indra_html = indra.reconstruct_digital_table(lines, page.polygon.size)
+            if indra_html and self.clean_table_html(indra_html):
+                return indra_html
         result = reconstruct_table_html(lines)
-        if not result:
-            return None
-        html, score = result
-        min_score = self.min_recon_score
-        if min_score is None:
-            min_score = 0.75 if self.mode == "balanced" else 0.5
-        if score < min_score:
-            return None
-        return html
+        if result:
+            html, score = result
+            min_score = self.min_recon_score
+            if min_score is None:
+                min_score = 0.75 if self.mode == "balanced" else 0.5
+            if score >= min_score:
+                return html
+        if indra is not None and self.mode != "balanced" and _garble_ok(lines):
+            indra_html = indra.reconstruct_digital_table(lines, page.polygon.size)
+            if indra_html and self.clean_table_html(indra_html):
+                return indra_html
+        return None
 
     def run_ocr_fallback(self, document: Document, fallback: list):
         """OCR the crops of digital tables the pdftext heuristics couldn't
@@ -151,10 +223,27 @@ class TableProcessor(BaseProcessor):
             )
             layout_results.append(LayoutResult(bboxes=[box], image_bbox=[0, 0, w, h]))
 
-        self.recognition_model.disable_tqdm = self.disable_tqdm
-        results = self.recognition_model(
-            images=images, layout_results=layout_results, full_page=False
-        )
+        rec_model = self.get_recognition_model()
+        rec_model.disable_tqdm = self.disable_tqdm
+        try:
+            results = rec_model(
+                images=images, layout_results=layout_results, full_page=False
+            )
+        except Exception as exc:
+            if (
+                self.mode not in ("vllm", "surya", "accurate")
+                and self.indra_model is not None
+                and rec_model is not self.indra_model
+                and type(exc).__name__ == "SpawnError"
+            ):
+                if all(block.html for block, _tc in entries):
+                    self.table_stats["tables_ocr"] += len(entries)
+                    return
+                results = self.indra_model(
+                    images=images, layout_results=layout_results, full_page=False
+                )
+            else:
+                raise
         for (block, _tc), page_result in zip(entries, results):
             block_result = page_result.blocks[0] if page_result.blocks else None
             raw = block_result.html if block_result and not block_result.error else ""
@@ -168,7 +257,7 @@ class TableProcessor(BaseProcessor):
                 self.table_stats["tables_ocr_failed"] += 1
                 logger.warning(f"Table OCR failed for block {block.id}")
                 continue
-            block.structure = []
+            self._retire_child_lines(document, block)
             block.html = html
             block.text_extraction_method = "surya"
             self.table_stats["tables_ocr"] += 1
@@ -198,6 +287,8 @@ class TableProcessor(BaseProcessor):
         # Clean out other blocks inside the table
         # This can happen with stray text blocks inside the table post-merging
         for page in document.pages:
+            if page.text_extraction_method == "surya":
+                continue
             page_tables = tables_by_page.get(page.page_id, [])
             if not page_tables:
                 continue

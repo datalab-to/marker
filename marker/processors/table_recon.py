@@ -21,13 +21,13 @@ MIN_CELLS_PER_ROW = 2  # a "data row" has >= this many tokens (2 supports two-co
 MIN_TABLE_ROWS = 3  # need at least this many data rows to treat it as a table
 GAP_MIN_PT = 2.5  # projection: gaps narrower than this don't separate columns
 PROJ_FRACS = (0.01, 0.03, 0.10)  # projection row-frequency thresholds to sweep
-GRID_REGULARITY = 0.5
 
 _PUA = re.compile("[\ue000-\uf8ff\ufffd]")  # private-use area + replacement char
+_C0_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _GARBLE_CHAR_FRAC = 0.02  # >2% private-use / replacement chars => garbled
 # Leader runs (TOC dot leaders, form underscores/dashes) - not real cells;
 # gridding them as columns explodes the column count, so they're dropped.
-_LEADER_ONLY = re.compile(r"^[.·•…_\-\s]+$")
+_LEADER_ONLY = re.compile(r"^(?:[.·•…_\-]\s*){3,}$")
 _NUMISH = re.compile(r"^-?[\d,.]*\d[\d,.]*%?$")
 _NUM_TOK = re.compile(r"-?[\d,]+(\.\d+)?%?")
 _YEAR = re.compile(r"^(19|20)\d\d$")
@@ -341,21 +341,26 @@ def _line_tokens(line: dict, bbox):
 
     tokens = []
     have_chars = False
+    cur = None  # [text, x0, x1]
     for s in line.get("spans", []):
         chars = s.get("chars") or []
         if not chars:
             continue
         have_chars = True
-        cur = None  # [text, x0, x1]
         for c in chars:
             cx0, cy0, cx1, cy1 = c["bbox"]
             if not inside(cx0, cy0, cx1, cy1):
                 continue
             ch = c.get("char", "")
-            # Split threshold: half the char height. 0.25x mis-split words in
-            # condensed fonts (letter gaps can reach ~0.3x height); real cell
-            # and column gaps sit well above 0.5x.
-            gap = 0.5 * max(cy1 - cy0, 1.0)
+            if not ch or ch.isspace():
+                if cur is not None and not cur[0].endswith(" "):
+                    cur[0] += " "
+                    cur[2] = max(cur[2], cx1)
+                continue
+            # Split threshold: ~0.65x the char height. 0.25x-0.5x mis-split words
+            # across font/style switches (e.g. "75.86 ± 11.42" or italic "n=");
+            # real cell and column gaps sit above 0.65x.
+            gap = 0.65 * max(cy1 - cy0, 1.0)
             if cur is None:
                 cur = [ch, cx0, cx1]
             elif cx0 - cur[2] > gap:
@@ -363,9 +368,9 @@ def _line_tokens(line: dict, bbox):
                 cur = [ch, cx0, cx1]
             else:
                 cur[0] += ch
-                cur[2] = cx1
-        if cur is not None:
-            tokens.append(cur)
+                cur[2] = max(cur[2], cx1)
+    if cur is not None:
+        tokens.append(cur)
 
     if not have_chars:
         # No char data: fall back to span-level tokens.
@@ -377,7 +382,7 @@ def _line_tokens(line: dict, bbox):
 
     out = []
     for text, x0, x1 in tokens:
-        text = text.strip()
+        text = _C0_CTRL.sub("", text).strip()
         if text and not _LEADER_ONLY.match(text):
             out.append((text, round(x0, 1), round(x1, 1)))
     return out
@@ -455,7 +460,7 @@ def reconstruct_table_html(lines):
     k, cut_xs, grid, counts = best
 
     if band:
-        names, n_named = _stitch_band_headers(band, cut_xs, k)
+        names, _ = _stitch_band_headers(band, cut_xs, k)
         has_header = True
     else:
         # No geometric header band: treat the first data row as the header

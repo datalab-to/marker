@@ -113,7 +113,13 @@ Comparison: The html representation has the labels in the first row and the valu
             block.update_metadata(llm_error_count=1)
             return
 
-        corrected_html = corrected_html.strip().lstrip("```html").rstrip("```").strip()
+        corrected_html = (
+            corrected_html.strip()
+            .removeprefix("```html")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
         block.html = corrected_html
 
 

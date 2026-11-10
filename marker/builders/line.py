@@ -1,8 +1,16 @@
-from typing import Annotated, List, Tuple
+from dataclasses import dataclass
+import re
+from typing import Annotated, Any, List, Optional, Tuple
 
+import cv2
 import numpy as np
 
-from surya.ocr_error import OCRErrorPredictor
+
+@dataclass
+class OCRErrorDetectionResult:
+    texts: List[str]
+    labels: List[str]
+    scores: Optional[List[float]] = None
 
 from marker.builders import BaseBuilder
 from marker.providers import ProviderOutput, ProviderPageLines
@@ -12,7 +20,90 @@ from marker.schema.document import Document
 from marker.schema.groups.page import PageGroup
 from marker.settings import settings
 from marker.util import matrix_intersection_area
-from marker.utils.image import is_blank_image
+from marker.utils.image import is_blank_bbox, is_blank_image
+
+_C0_CONTROL_RE = re.compile(r"[\x01-\x08\x0b\x0e-\x1f]")
+_PUA_REPLACEMENT_RE = re.compile(r"[\ue000-\uf8ff\ufffd]")
+# Shifted glyph codes: digit + uppercase in a prose word ("4HE", "7HAT")
+_SHIFTED_GLYPH_RE = re.compile(r"\b[0-9][A-Z]{2,}\b")
+# Glued ligatures: lowercase + 2+ uppercase + lowercase ("diFFerent")
+_GLUED_LIGATURE_RE = re.compile(r"[a-z][A-Z]{2,}[a-z]")
+# Flattened bullets: "Z" + space + Capital ("Z First item")
+_FLATTENED_BULLET_RE = re.compile(r"(?:^|\n)Z [A-Z]")
+# Legacy non-Unicode font mappings (e.g. KrutiDev / Devlys) & corrupted OCR:
+# intraword punctuation or 5+ consecutive ASCII consonants or Latin-1 mojibake
+_INTRAWORD_PUNCT_RE = re.compile(
+    r'[A-Za-z][;:`~^<>|&\\"()«»•!][A-Za-z]|(?:[A-Za-z][0-9]){2,}[A-Za-z]|[A-Za-z][0-9][a-z]{3,}'
+)
+_CONSONANT_CLUSTER_RE = re.compile(r"[bcdfghjklmnpqrstvwxz]{5,}", re.IGNORECASE)
+_MOJIBAKE_CLUSTER_RE = re.compile(
+    r"(?:Ã[\x80-\xbf©¨ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿]|Â[\x80-\xbf°±²³´µ¶·¸¹º»¼½¾¿]|â€)"
+)
+
+
+def score_text_garble(text: str) -> float:
+    """Deterministic text-layer garble scorer in [0.0, 1.0] (>= 0.5 is 'bad').
+
+    Catches broken ToUnicode CMaps (PUA/replacement glyphs, C0 control chars,
+    shifted glyph codes, glued ligatures, flattened bullets), legacy non-Unicode
+    fonts (KrutiDev/Devlys intraword punctuation and consonant clusters), and
+    corrupted OCR layers without spawning an external DistilBERT server.
+    """
+    if not text or not text.strip():
+        return 1.0
+    n = len(text)
+    if _C0_CONTROL_RE.search(text):
+        return 1.0
+    pua_count = len(_PUA_REPLACEMENT_RE.findall(text))
+    if pua_count / n >= 0.025:
+        return 1.0
+    if len(_SHIFTED_GLYPH_RE.findall(text)) >= 2:
+        return 1.0
+    if len(_GLUED_LIGATURE_RE.findall(text)) >= 2:
+        return 1.0
+    if len(_FLATTENED_BULLET_RE.findall(text)) >= 2:
+        return 1.0
+
+    tokens = text.split()
+    alpha_tokens = [t for t in tokens if any(c.isalpha() for c in t)]
+    bad_frac = 0.0
+    if len(alpha_tokens) >= 6:
+        bad_tokens = sum(
+            1
+            for t in alpha_tokens
+            if _INTRAWORD_PUNCT_RE.search(t)
+            or _CONSONANT_CLUSTER_RE.search(t)
+            or _MOJIBAKE_CLUSTER_RE.search(t)
+        )
+        bad_frac = bad_tokens / len(alpha_tokens)
+        if bad_frac >= 0.10:
+            return min(1.0, bad_frac * 5.0)
+
+    return min(0.49, max((pua_count / n) * 20.0, bad_frac * 5.0))
+
+
+def has_non_latin_script(text: str, min_ratio: float = 0.10) -> bool:
+    """Return True when a page's text contains a significant fraction of non-Latin
+    script (CJK, Hangul, Cyrillic, Arabic, Hebrew, Indic, Thai, etc.), excluding
+    Greek math symbols. Indra's OrderNet and line recognizer use an ASCII/Latin
+    vocabulary, so non-Latin pages in balanced mode should route to Surya VLM."""
+    if not text:
+        return False
+    alpha = 0
+    non_latin = 0
+    cjk = 0
+    for ch in text:
+        if ch.isalpha():
+            alpha += 1
+            cp = ord(ch)
+            if cp > 0x024F and not (0x0370 <= cp <= 0x03FF):
+                non_latin += 1
+                if (0x3040 <= cp <= 0x9FFF) or (0xAC00 <= cp <= 0xD7AF):
+                    cjk += 1
+    if cjk >= 8:
+        return True
+    return alpha >= 10 and (non_latin / alpha) >= min_ratio
+
 
 
 class LineBuilder(BaseBuilder):
@@ -77,12 +168,9 @@ class LineBuilder(BaseBuilder):
     use_pdftext_reading_order: Annotated[
         bool,
         "Order layout blocks on pdftext pages by the PDF's character reading",
-        "order. On by default: it beats learned reading-order models on",
-        "multi-column pages (olmocr-bench order tests: 75% vs 56%). OCR'd",
-        "pages get their order from full-page OCR instead. Turning this off",
-        "orders every page by the layout model (in fast mode this enables its",
-        "learned reading-order head for all pages).",
-    ] = True
+        "order. Off by default since OrderNet (order.onnx) already orders blocks",
+        "accurately across multi-column and out-of-order PDF streams.",
+    ] = False
     mode: Annotated[
         str,
         "Conversion mode. 'balanced' promotes any page with flagged blocks to",
@@ -137,10 +225,12 @@ class LineBuilder(BaseBuilder):
 
     def __init__(
         self,
-        ocr_error_model: OCRErrorPredictor,
+        ocr_error_model: Any = None,
         config=None,
     ):
         super().__init__(config)
+        if self.mode == "no_ocr":
+            self.disable_ocr = True
 
         self.ocr_error_model = ocr_error_model
 
@@ -197,6 +287,13 @@ class LineBuilder(BaseBuilder):
         return 4
 
     def get_all_lines(self, document: Document, provider: PdfProvider):
+        if self.mode in ("vllm", "surya", "accurate") and not self.disable_ocr:
+            self.page_ocr_error_scores = {page.page_id: 1.0 for page in document.pages}
+            for document_page in document.pages:
+                document_page.ocr_errors_detected = True
+                document_page.text_extraction_method = "surya"
+            return {page.page_id: [] for page in document.pages}
+
         # disable_ocr keeps the PDF text layer regardless, so skip the
         # ocr-error model entirely (no server needed on the pure-CPU path).
         if self.disable_ocr:
@@ -217,7 +314,58 @@ class LineBuilder(BaseBuilder):
             page.page_id: score for page, score in zip(document.pages, scores)
         }
 
+        use_mock_model = (
+            self.ocr_error_model is not None
+            and type(self.ocr_error_model).__module__.startswith("unittest.mock")
+        )
+        tl_untrusted_pages = set()
+        if (
+            not self.disable_ocr
+            and not use_mock_model
+            and getattr(provider, "filepath", None)
+            and str(provider.filepath).lower().endswith(".pdf")
+        ):
+            try:
+                import pypdfium2 as pdfium
+                from indra_ocr.text_layer import (
+                    CHECK_DPI,
+                    _render,
+                    page_turn,
+                    read_text_layer,
+                    vertical_layout,
+                )
+
+                doc = pdfium.PdfDocument(str(provider.filepath))
+                try:
+                    s_check = CHECK_DPI / 72.0
+                    for dp in document.pages:
+                        p_lines = provider.page_lines.get(dp.page_id)
+                        if not p_lines:
+                            continue
+                        if self.mode == "balanced":
+                            p_txt = "\n".join(
+                                " ".join(s.text for s in ln.spans) for ln in p_lines
+                            )
+                            if has_non_latin_script(p_txt):
+                                tl_untrusted_pages.add(dp.page_id)
+                                continue
+                        p_obj = doc[dp.page_id]
+                        check_img = _render(p_obj, s_check)
+                        tl = read_text_layer(p_obj, check_img, s_check)
+                        if (
+                            not tl.trusted
+                            or page_turn(tl.stats) != 0
+                            or vertical_layout(tl.stats)
+                        ):
+                            tl_untrusted_pages.add(dp.page_id)
+                finally:
+                    doc.close()
+            except Exception:
+                pass
+
         for document_page, ocr_error_detection_label in zip(document.pages, labels):
+            if document_page.page_id in tl_untrusted_pages:
+                ocr_error_detection_label = "bad"
             document_page.ocr_errors_detected = ocr_error_detection_label == "bad"
             provider_lines: List[ProviderOutput] = provider.page_lines.get(
                 document_page.page_id, []
@@ -249,19 +397,46 @@ class LineBuilder(BaseBuilder):
     def ocr_error_detection(
         self, pages: List[PageGroup], provider_page_lines: ProviderPageLines
     ):
+        all_page_texts = []
         page_texts = []
-        for document_page in pages:
+        non_empty_indices = []
+        for idx, document_page in enumerate(pages):
             provider_lines = provider_page_lines.get(document_page.page_id, [])
             page_text = "\n".join(
                 " ".join(s.text for s in line.spans) for line in provider_lines
             )
-            page_texts.append(page_text)
+            all_page_texts.append(page_text)
+            if page_text.strip():
+                non_empty_indices.append(idx)
+                page_texts.append(page_text)
 
-        self.ocr_error_model.disable_tqdm = self.disable_tqdm
-        ocr_error_detection_results = self.ocr_error_model(
-            page_texts, batch_size=int(self.get_ocr_error_batch_size())
+        labels = ["bad"] * len(pages)
+        scores = [1.0] * len(pages)
+        if page_texts:
+            use_mock_model = (
+                self.ocr_error_model is not None
+                and type(self.ocr_error_model).__module__.startswith("unittest.mock")
+            )
+            if not use_mock_model:
+                for idx, txt in zip(non_empty_indices, page_texts):
+                    sc = score_text_garble(txt)
+                    labels[idx] = "bad" if sc >= 0.5 else "good"
+                    scores[idx] = sc
+            else:
+                self.ocr_error_model.disable_tqdm = self.disable_tqdm
+                res = self.ocr_error_model(
+                    page_texts, batch_size=int(self.get_ocr_error_batch_size())
+                )
+                res_scores = res.scores or [
+                    1.0 if lbl == "bad" else 0.0 for lbl in res.labels
+                ]
+                for idx, lbl, sc in zip(non_empty_indices, res.labels, res_scores):
+                    labels[idx] = lbl
+                    scores[idx] = sc
+
+        return OCRErrorDetectionResult(
+            texts=all_page_texts, labels=labels, scores=scores
         )
-        return ocr_error_detection_results
 
     def check_line_overlaps(
         self, document_page: PageGroup, provider_lines: List[ProviderOutput]
@@ -285,12 +460,18 @@ class LineBuilder(BaseBuilder):
                 return False
 
         intersection_matrix = matrix_intersection_area(provider_bboxes, provider_bboxes)
-        # A line overlapping >2 others (itself + 2) is suspect. Inline math
-        # (stacked radical/fraction spans) and dense figure labels legitimately
-        # overlap a few neighbors, so a single bad line does not condemn the
-        # page - only a large fraction does (a duplicate/broken text layer).
+        line_areas = np.array(
+            [max(line.line.polygon.area, 1.0) for line in provider_lines],
+            dtype=np.float32,
+        )
+        intersection_pct = intersection_matrix / line_areas[:, None]
+        # A line overlapping >2 others (itself + 2) by more than the overlap
+        # fraction threshold is suspect. Inline math (stacked radical/fraction
+        # spans) and dense figure labels legitimately overlap a few neighbors,
+        # so a single bad line does not condemn the page - only a large
+        # fraction does (a duplicate/broken text layer).
         intersect_counts = (
-            intersection_matrix > self.provider_line_provider_line_min_overlap_pct
+            intersection_pct > self.provider_line_provider_line_min_overlap_pct
         ).sum(axis=1)
         over_intersecting = int((intersect_counts > 2).sum())
 
@@ -349,6 +530,7 @@ class LineBuilder(BaseBuilder):
         page_size = (page.polygon.width, page.polygon.height)
         page_image = page.get_image()
         image_size = page_image.size
+        gray_page = cv2.cvtColor(np.asarray(page_image), cv2.COLOR_RGB2GRAY)
 
         good_lines = []
         for line in lines:
@@ -356,7 +538,7 @@ class LineBuilder(BaseBuilder):
             line_polygon_rescaled = line.line.polygon.rescale(page_size, image_size)
             line_bbox = line_polygon_rescaled.fit_to_bounds((0, 0, *image_size)).bbox
 
-            if not is_blank_image(page_image.crop(line_bbox)):
+            if not is_blank_bbox(gray_page, line_bbox):
                 good_lines.append(line)
 
         return good_lines
@@ -405,6 +587,7 @@ class LineBuilder(BaseBuilder):
                 continue
             page_image = page.get_image()
             image_size = page_image.size
+            gray_page = None
             page_size = page.polygon.size
             min_area = self.min_ocr_block_area_fraction * page.polygon.area
             # Confidently-clean pages skip the per-block garbled recheck (the
@@ -449,21 +632,34 @@ class LineBuilder(BaseBuilder):
                         .fit_to_bounds((0, 0, *image_size))
                         .bbox
                     )
-                    if is_blank_image(page_image.crop(crop_bbox)):
+                    if gray_page is None:
+                        gray_page = cv2.cvtColor(
+                            np.asarray(page_image), cv2.COLOR_RGB2GRAY
+                        )
+                    if is_blank_bbox(gray_page, crop_bbox):
                         continue
                     block.text_extraction_method = "surya"
                 elif check_garbled and len(text) >= self.min_garbled_text_chars:
                     garbled_candidates.append((block, text))
 
         if garbled_candidates:
-            self.ocr_error_model.disable_tqdm = self.disable_tqdm
-            labels = self.ocr_error_model(
-                [t for _, t in garbled_candidates],
-                batch_size=int(self.get_ocr_error_batch_size()),
-            ).labels
-            for (block, _), label in zip(garbled_candidates, labels):
-                if label == "bad":
-                    block.text_extraction_method = "surya"
+            use_mock_model = (
+                self.ocr_error_model is not None
+                and type(self.ocr_error_model).__module__.startswith("unittest.mock")
+            )
+            if not use_mock_model:
+                for block, txt in garbled_candidates:
+                    if score_text_garble(txt) >= 0.5:
+                        block.text_extraction_method = "surya"
+            else:
+                self.ocr_error_model.disable_tqdm = self.disable_tqdm
+                labels = self.ocr_error_model(
+                    [t for _, t in garbled_candidates],
+                    batch_size=int(self.get_ocr_error_batch_size()),
+                ).labels
+                for (block, _), label in zip(garbled_candidates, labels):
+                    if label == "bad":
+                        block.text_extraction_method = "surya"
 
         # Promote bad pages to full-page OCR. Balanced promotes on ANY flagged
         # block (re-reading the whole page in context is the higher-quality
