@@ -42,13 +42,19 @@ Get started with **about 5,000 free convert pages every month** (work email) —
 
 ## Performance
 
-<img src="data/images/olmocr_bench.png" width="800px"/>
+<img src="data/images/omniparsebench.png" width="800px"/>
 
-We measure marker on [olmocr-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench), a third-party benchmark of 1,403 PDFs with tests covering math, tables, multi-column layout, scans, and hard edge cases.  Balanced mode scores **76.0%** overall — **83.5%** on born-digital PDFs — ahead of MinerU and docling and within range of much larger VLMs, while `fast` mode runs in-process Indra ONNX layout and OCR on CPU with no server required, and `no_ocr` goes faster still.  Scores are the olmocr-bench overall (macro-average across the 8 categories).
+We measure Marker on [OmniParseBench](https://huggingface.co/datasets/datalab-to/omni_parse_bench) ([GitHub](https://github.com/datalab-to/omni_parse_bench)), a comprehensive document-parsing benchmark of **16,288 pass/fail unit tests across 2,937 pages** in 92 languages covering text & reading order (`8,499` tests), table cell structure (`5,386` tests), and block layout (`2,403` tests), as well as [olmOCR-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench).
 
-<img src="data/images/olmocr_digital.png" width="700px"/>
+Marker's four conversion modes span the entire quality–throughput frontier:
+- **`vllm`** (full-page Surya 2.5 VLM, GPU) scores **85.9** headline on OmniParseBench (**83.7** on olmOCR-bench) at **4.5 pg/s** — ahead of open VLMs 2–5× its size (GLM-OCR, LightOnOCR-3-4B, PaddleOCR-VL-1.6, DeepSeek-OCR-2) and within 1.2 points of MinerU 2.5-Pro at ~8× higher throughput.
+- **`balanced`** (hybrid `pdftext` + Indra ONNX layout + Surya 2.5 VLM on tables/math/CJK/scans, GPU) scores **80.5** headline (**85.6** on the olmOCR-bench suites) at **16.9 pg/s**.
+- **`fast`** (in-process Indra ONNX layout, reading order, and ONNX OCR on CPU, no VLM server) scores **71.0** headline at **23.6 pg/s** — beating HunyuanOCR-1.5 (1B VLM) and outscoring PaddleOCR PP-StructureV3 (`58.4`) by +12.6 points at >100× the speed on CPU.
+- **`no_ocr`** (PDF text layer + in-process Indra ONNX layout on CPU) runs at **57.0 pg/s** with zero OCR calls.
 
-See [below](#benchmarks) for the full per-category scores, the competitive comparison, and instructions on how to run your own benchmarks.
+<img src="data/images/omniparsebench_scores_bar.png" width="800px"/>
+
+See [below](#benchmarks) for the full OmniParseBench and olmOCR-bench tables, per-suite breakdowns, and instructions on how to run your own benchmarks.
 
 ## Hybrid Mode
 
@@ -460,96 +466,149 @@ Pass the `debug` option to activate debug mode.  This will save images of each p
 
 # Benchmarks
 
-## Overall PDF Conversion
+## OmniParseBench
 
-We measure conversion quality with [olmocr-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench): 1,403 PDFs with ~8,400 pass/fail unit tests covering math rendering, table structure, reading order, headers/footers, and old scans.  The overall score is the **macro-average across the 8 categories** (matching how olmocr-bench and Chandra report), using the official olmocr-bench checker.
+We evaluate end-to-end document parsing with [OmniParseBench](https://huggingface.co/datasets/datalab-to/omni_parse_bench) ([GitHub](https://github.com/datalab-to/omni_parse_bench)): **16,288 pass/fail unit tests across 2,937 pages** from 2,343 documents over 22 suites and 92 languages. Tests are organized into three families:
+- **Text** (`8,499` tests): text presence (`7,275`), reading order (`1,189`), and repetition avoidance (`35`), including inline and display math.
+- **Tables** (`5,386` tests): table cell content and `colspan` / `rowspan` structural relationships.
+- **Layout** (`2,403` tests): block-level layout classification (headings, lists, tables, captions, footnotes, forms).
+
+The **Headline** score is the macro-average of the **Text**, **Tables**, and **Layout** family pass rates.
 
 ### Competitive comparison
 
-Quality vs. throughput on the full bench — up (higher score) and right (faster) is better.  Marker (this repo) beats **both** MinerU and docling on score *and* throughput at once: balanced matches Gemini/MinerU quality while running ~5× more pages/sec than MinerU, and fast trades a little quality for a big speedup.
+Quality vs. throughput on OmniParseBench — up (higher score) and right (faster) is better:
 
-<img src="data/images/olmocr_bench.png" width="800px"/>
+<img src="data/images/omniparsebench.png" width="800px"/>
 
-| System | Overall | Digital-only | Throughput\* |
-|---|---:|---:|---:|
-| [Chandra 2](https://github.com/datalab-to/chandra) (hosted) | 85.8 | — | — |
-| Gemini Flash 3.5 (API) | 76.4 | 79.1 | — |
-| **Marker — balanced** (GPU) | **76.0** | **83.5** | **2.9 pg/s** |
-| MinerU — pipeline (GPU) | 72.7 | 83.3 | 0.54 pg/s |
-| **Marker — fast** (CPU / ONNX) | **66.6** | **71.6** | **7.4–33 pg/s** |
-| docling (GPU) | 50.3 | 64.0 | 2.1 pg/s |
-| **Marker — no_ocr** (CPU) | **43.6** | **55.8** | **23.7–33 pg/s** |
-| liteparse (CPU) | 22.4 | 27.3 | 8.9 pg/s |
-| liteparse, no OCR (CPU) | 20.4 | 25.0 | 1721 pg/s |
+Representative public scores from the [OmniParseBench leaderboard](https://huggingface.co/datasets/datalab-to/omni_parse_bench) alongside Marker's four conversion modes:
 
-Chandra 2 is our hosted model (numbers from the [Chandra repo](https://github.com/datalab-to/chandra)); Gemini Flash 3.5 is via API; MinerU / docling / liteparse are OSS pipelines.  Digital-only = macro-average over the 6 non-scanned categories (a subset most text-layer tools score higher on).
+| System | Type / Weights | Headline | Text | Tables | Layout | Throughput\* |
+|---|---|---:|---:|---:|---:|---:|
+| [Datalab API (accurate)](https://www.datalab.to/?utm_source=gh-marker) | Hosted API | 94.1 | 92.0 | 94.2 | 96.0 | — |
+| [Datalab API (balanced)](https://www.datalab.to/?utm_source=gh-marker) | Hosted API | 92.6 | 90.1 | 91.6 | 96.2 | — |
+| [Chandra OCR 2](https://github.com/datalab-to/chandra) | Open VLM (4.5B) | 90.1 | 87.4 | 87.4 | 95.4 | — |
+| Mistral OCR | Hosted API | 89.5 | 82.8 | 91.9 | 93.8 | — |
+| dots.mocr | Open VLM (3.0B) | 87.9 | 82.5 | 88.6 | 92.5 | — |
+| MinerU 2.5-Pro | Open VLM (1.2B, GPU) | 87.1 | 77.4 | 92.1 | 91.7 | 0.54 pg/s |
+| **Marker — `vllm` ([Surya 2.5](https://github.com/datalab-to/surya))** | **Open VLM (0.69B, GPU)** | **85.9** | **83.8** | **78.3** | **95.7** | **4.5 pg/s** |
+| LightOnOCR-3-4B | Open VLM (4.5B) | 82.9 | 83.9 | 70.8 | 94.0 | — |
+| GLM-OCR | Open VLM (1.3B) | 81.5 | 71.0 | 84.2 | 89.3 | — |
+| **Marker — `balanced`** | **Open Hybrid (GPU)** | **80.5** | **79.2** | **70.1** | **92.2** | **16.9 pg/s** |
+| Nemotron 3.5 Parse | Open VLM (0.63B) | 80.0 | 72.4 | 77.3 | 90.2 | — |
+| PaddleOCR-VL-1.6 | Open VLM (0.96B, GPU) | 78.7 | 61.7 | 83.7 | 90.7 | ~1.2 pg/s |
+| DeepSeek-OCR-2 | Open VLM (3.4B, GPU) | 75.2 | 64.2 | 70.0 | 91.4 | ~0.8 pg/s |
+| **Marker — `fast`** | **Open ONNX (CPU)** | **71.0** | **62.3** | **59.6** | **91.2** | **23.6 pg/s** |
+| [Indra OCR](https://github.com/datalab-to/indra-ocr) (standalone) | Open ONNX (12M, CPU) | 69.5 | 60.3 | 58.1 | 90.1 | 49.4 pg/s |
+| HunyuanOCR-1.5 | Open VLM (1.0B) | 64.6 | 50.5 | 61.9 | 81.4 | — |
+| PaddleOCR PP-StructureV3 | Open Pipeline (CPU) | 58.4 | 55.6 | 47.8 | 71.7 | ≤ 0.18 pg/s |
+| **Marker — `no_ocr`** | **Open Text-layer + ONNX (CPU)** | **40.8** | **22.7** | **22.0** | **77.8** | **57.0 pg/s** |
+| olmOCR-2 | Open VLM (8.3B, no layout) | — | 71.3 | 56.6 | — | — |
+| Nanonets-OCR2-3B | Open VLM (3.8B, no layout) | — | 68.2 | 62.6 | — | — |
+| Tesseract 5 | Open OCR (CPU, no layout/tables) | — | 17.6 | 0.0 | — | 2.9 pg/s |
 
-\* Throughput is sustained **concurrent** pages/sec on one GPU host — the deployment-relevant number, not single-stream latency.  Each system runs at its native parallelism (marker balanced, MinerU, docling on GPU; marker `fast` / `no_ocr` and liteparse on CPU).  Chandra (hosted) and Gemini (API) have no local-hardware throughput.  Marker's design — thin CPU workers sharing one inference server (see [Throughput](#throughput)) — is what lets a GPU mode like balanced sustain high multi-worker throughput.
+\* Throughput is sustained concurrent pages/sec on a single host (`Marker balanced` / `vllm` on one GPU with thin CPU workers sharing the Surya inference server; `Marker fast` / `no_ocr`, `Indra OCR`, `PP-StructureV3`, and `Tesseract 5` on CPU with no GPU).
 
-The table compares **pipeline systems** — marker (which reads the PDF text layer and OCRs selectively) against MinerU's **pipeline** backend and docling (also text-layer + selective OCR).  This is the apples-to-apples comparison, and marker balanced leads it on both score and throughput.  (docling runs its default pipeline: text layer for born-digital, OCR for image regions; MinerU's own VLM backend scores higher but is a different, full-page-VLM approach.)
+Ranked headline scores and concurrent throughput across systems:
 
-If your documents need **full-page VLM OCR** on every page — math-heavy pages, scans, the highest possible accuracy — pass `--mode vllm` in Marker, or reach for [Chandra](https://github.com/datalab-to/chandra) (our document VLM, 85.8 here) or [surya](https://github.com/datalab-to/surya) (the OCR VLM marker uses under the hood).
+<img src="data/images/omniparsebench_scores_bar.png" width="49%"/> <img src="data/images/omniparsebench_throughput_bar.png" width="49%"/>
 
-The same numbers as ranked bar charts (score across all systems; throughput for the local ones on a log scale):
+Per-family breakdown (**Text**, **Tables**, **Layout**) across representative models:
 
-<img src="data/images/olmocr_scores_bar.png" width="49%"/> <img src="data/images/olmocr_throughput_bar.png" width="49%"/>
+<img src="data/images/omniparsebench_families.png" width="800px"/>
 
-### Born-digital, CPU-only
+### Marker modes, per OmniParseBench suite
 
-If you only have born-digital PDFs and no GPU, the relevant comparison is pure-CPU text extractors.  Marker's `fast` and `no_ocr` modes run in-process Indra ONNX layout and reading order on CPU and still read structure (columns, tables, headers), so they score far higher than a plain text dump — while liteparse (no layout model) is faster but collapses on anything non-linear.
+| Suite | Tests | `balanced` (GPU) | `fast` (CPU ONNX) | `no_ocr` (CPU) |
+|---|---:|---:|---:|---:|
+| `olmo_arxiv_math` | 3,272 | **90.8** | 77.8 | 49.1 |
+| `olmo_table_tests` | 718 | **88.4** | 80.3 | 56.4 |
+| `olmo_multi_column` | 352 | **88.2** | 86.0 | 81.4 |
+| `olmo_old_scans_math` | 450 | **85.5** | 54.3 | 48.7 |
+| `olmo_long_tiny_text` | 237 | 78.4 | **82.8** | 58.6 |
+| `olmo_old_scans` | 395 | **70.5** | 52.3 | 42.1 |
+| `tables_derived` | 5,427 | **80.9** | 80.1 | 63.3 |
+| `synth_copies` | 1,881 | **85.3** | 75.4 | 46.1 |
+| `multiling_finepdfs` | 676 | 80.2 | **87.4** | 59.2 |
+| `realdoc_pages` | 445 | **77.1** | 76.6 | 20.2 |
+| `realdoc_pdfs` | 256 | **82.4** | 77.7 | 28.6 |
+| `rotation_skew` | 377 | **84.3** | 83.7 | 34.0 |
+| `tiny_plans` | 372 | **83.9** | 77.2 | 45.3 |
+| `handwriting_samples` | 324 | **66.1** | 49.9 | 50.0 |
+| `docparsing_images` | 299 | **86.3** | 77.5 | 27.4 |
+| `parsebench_docs` | 293 | 85.4 | **89.5** | 82.7 |
+| `forms_federal` | 127 | **74.1** | 58.6 | 16.3 |
+| `forms_filled` | 107 | 75.9 | **80.5** | 48.0 |
+| `forms_documentcloud` | 47 | 90.3 | 85.0 | **97.4** |
+| **OmniParseBench Headline** | **16,288** | **80.5** | **71.0** | **40.8** |
+| **olmOCR-bench suites (6-suite mean)** | **5,424** | **85.6** | **70.8** | **44.0** |
+
+### CPU-only parsing
+
+If you have no GPU, Marker's `fast` and `no_ocr` modes run entirely in-process on CPU using Indra ONNX layout, reading order, and line/math OCR. Unlike plain text extractors (`liteparse`, `Tesseract`), they preserve multi-column reading order, section headers, and HTML table structure:
 
 <img src="data/images/olmocr_digital.png" width="800px"/>
 
-### Marker modes, per category
+## olmOCR-bench
 
-| Category | balanced | fast | no_ocr |
-|----------------------|----------|------|--------|
-| arXiv math           | 83.9     | 23.4 | 0.0    |
-| Tables               | 73.4     | 69.0 | 46.1   |
-| Multi column         | 76.6     | 76.0 | 67.0   |
-| Headers & footers    | 95.9     | 93.2 | 92.8   |
-| Long tiny text       | 71.3     | 68.3 | 43.2   |
-| Old scans math       | 63.8     | 59.8 | 0.0    |
-| Old scans            | 43.2     | 43.2 | 14.3   |
-| Baseline             | 99.7     | 99.9 | 85.9   |
-| **Overall**          | **76.0** | **66.6** | **43.6** |
-| **Overall (born-digital only)** | **83.5** | **71.6** | **55.8** |
+We also evaluate on the standalone [olmOCR-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench) harness (1,403 PDFs across 8 categories, scored with the official olmOCR-bench checker):
 
-Notes:
+<img src="data/images/olmocr_scores_bar.png" width="800px"/>
 
-- Born-digital-only excludes the two scanned splits (old scans, old scans math).
-- Fast mode runs in-process Indra ONNX layout and OCR on CPU with no VLM server: its math score is lower by design unless math recognition is enabled, whereas `balanced` routes equations, inline math, complex tables, and scans to the Surya 2.5 VLM.
-- `--mode no_ocr` (`--disable_ocr`) never calls any OCR model: math scores zero (equations have no text-layer LaTeX), and the raw text layer's garbled math glyphs also cost some baseline points.  It is the fastest pure CPU text-layer path.
+| System | Overall (8 splits) | Born-digital (6 splits) | Throughput |
+|---|---:|---:|---:|
+| [Chandra 2](https://github.com/datalab-to/chandra) (hosted) | 85.8 | — | — |
+| **Marker — `vllm`** (GPU) | **83.7** | **89.5** | **4.5 pg/s** |
+| Gemini Flash 3.5 (API) | 76.4 | 79.1 | — |
+| **Marker — `balanced`** (GPU) | **76.0** | **83.5** | **2.9–16.9 pg/s** |
+| MinerU — pipeline (GPU) | 72.7 | 83.3 | 0.54 pg/s |
+| **Marker — `fast`** (CPU / ONNX) | **66.6** | **71.6** | **7.4–23.6 pg/s** |
+| docling (GPU) | 50.3 | 64.0 | 2.1 pg/s |
+| **Marker — `no_ocr`** (CPU) | **43.6** | **55.8** | **23.7–57.0 pg/s** |
+| liteparse (CPU) | 22.4 | 27.3 | 8.9 pg/s |
+| liteparse, no OCR (CPU) | 20.4 | 25.0 | 1721 pg/s |
+
+Per-category breakdown on the standalone 8-split olmOCR-bench:
+
+| Category | `vllm` | `balanced` | `fast` | `no_ocr` |
+|---|---:|---:|---:|---:|
+| arXiv math | 87.0 | 83.9 | 23.4 | 0.0 |
+| Tables | 90.9 | 73.4 | 69.0 | 46.1 |
+| Multi column | 83.3 | 76.6 | 76.0 | 67.0 |
+| Headers & footers | 90.9 | 95.9 | 93.2 | 92.8 |
+| Long tiny text | 94.8 | 71.3 | 68.3 | 43.2 |
+| Old scans math | 78.6 | 63.8 | 59.8 | 0.0 |
+| Old scans | 44.3 | 43.2 | 43.2 | 14.3 |
+| Baseline | 99.9 | 99.7 | 99.9 | 85.9 |
+| **Overall** | **83.7** | **76.0** | **66.6** | **43.6** |
+| **Overall (born-digital only)** | **89.5** | **83.5** | **71.6** | **55.8** |
 
 ## Throughput
 
 <img src="data/images/marker_throughput.png" width="800px"/>
 
-Production throughput comes from **concurrency**, not per-page latency.  Marker runs many thin conversion workers that hold only small CPU models (Indra ONNX layout/OCR, OCR-error detection) and share a single inference server in `balanced` / `vllm` modes; the parent process budgets VLM concurrency across them, so throughput scales with server capacity rather than per-process VRAM.
+Production throughput comes from **concurrency**, not single-stream latency. Marker runs thin conversion workers that hold small CPU models (Indra ONNX layout/OCR, OCR-error detection) and share a single inference server in `balanced` / `vllm` modes; the parent process budgets VLM concurrency across them, so throughput scales with server capacity rather than per-process VRAM.
 
-Sustained steady-state over the 1,403-page olmocr-bench set:
+Sustained concurrent throughput across OmniParseBench (2,937 pages) and olmOCR-bench (1,403 pages):
 
-| Mode | Throughput | Effective latency/page |
-|---|---:|---:|
-| `no_ocr` (CPU) | **23.7–33 pg/s** | 30–42 ms |
-| `fast` (CPU / ONNX) | **7.4–33 pg/s** | 30–134 ms |
-| `balanced` (GPU) | **2.9 pg/s** | 341 ms |
+| Mode | OmniParseBench Throughput | olmOCR-bench Throughput | Hardware |
+|---|---:|---:|---|
+| `no_ocr` | **57.0 pg/s** | **23.7–33 pg/s** | CPU only (pdftext + Indra ONNX layout) |
+| `fast` | **23.6 pg/s** | **7.4–33 pg/s** | CPU only (Indra ONNX layout + ONNX OCR) |
+| `balanced` | **16.9 pg/s** | **2.9–16.9 pg/s** | Hybrid (CPU Indra ONNX + GPU Surya 2.5 VLM) |
+| `vllm` | **4.5 pg/s** | **4.5 pg/s** | GPU (full-page Surya 2.5 VLM) |
 
-`no_ocr` and `fast` run in-process on CPU (pdftext + Indra ONNX layout and OCR, no VLM server) and need no GPU at all.  `balanced` is GPU-assisted and still leaves the GPU with headroom on a single B200 (balanced saturates only ~30% of it — the ceiling is the VLM's decode throughput, so throughput scales further with more/larger inference-server replicas).  Measure it on your own hardware with `benchmarks/inference.py` (see [benchmarks/README.md](benchmarks/README.md)); it reports sustained pages/sec at your chosen concurrency.
+`no_ocr` and `fast` run in-process on CPU (pdftext + Indra ONNX layout and OCR, no VLM server) and need no GPU at all. `balanced` routes clean digital prose on CPU and sends only equations, complex tables, non-Latin scripts, and scanned pages to the GPU Surya 2.5 VLM server.
 
 ## Table Conversion
 
-Marker can extract tables from PDFs using `marker.converters.table.TableConverter`.  Table quality is included in the olmocr-bench scores above (the `Tables` row).  Digital tables are reconstructed from the PDF text layer on CPU; scanned tables and low-confidence reconstructions fall back to the VLM.  The `--use_llm` flag can improve difficult tables further (multi-page merges, complex spans).
+Marker can extract tables from PDFs using `marker.converters.table.TableConverter`. Table quality is measured directly in OmniParseBench (`5,386` table tests across `olmo_table_tests` and `tables_derived`) and olmOCR-bench. Digital tables are reconstructed from the PDF text layer on CPU; scanned tables and low-confidence reconstructions fall back to the VLM in `balanced` / `vllm` modes. The `--use_llm` flag can improve difficult tables further (multi-page merges, complex spans).
 
 ## Running your own benchmarks
 
-Everything above — the olmocr-bench scores and the throughput numbers, for both marker and the competitors — is reproducible with the harness in [`benchmarks/`](benchmarks/).  In short:
-
-1. Clone [olmocr-bench](https://github.com/allenai/olmocr) and download its bench data (we don't vendor it).
-2. Run `benchmarks/inference.py` to convert the bench PDFs with marker at real worker concurrency — it writes scoreable per-page markdown *and* prints sustained pages/sec.
-3. Score the output with olmocr-bench's own checker, then run `benchmarks/summarize.py` to get the Overall (macro-average) and Digital-only numbers.
-
-Competitor runners (liteparse, docling, MinerU), each using the tool's native parallelism, live in `benchmarks/competitors/`.  See [benchmarks/README.md](benchmarks/README.md) for the full step-by-step.
+Everything above is reproducible:
+- **OmniParseBench**: Install [`omni-parse-bench`](https://github.com/datalab-to/omni_parse_bench) (`pip install "omni-parse-bench[benchmark]"`), convert the dataset pages with Marker (`--mode no_ocr|fast|balanced|vllm`), and score with the official `omni_parse_bench` scorer.
+- **olmOCR-bench & Throughput**: Use `benchmarks/inference.py` and `benchmarks/summarize.py` ( plus `benchmarks/plot_benchmarks.py` to regenerate all charts in `data/images/`). See [benchmarks/README.md](benchmarks/README.md) for the full step-by-step instructions.
 
 # How it works
 
