@@ -83,14 +83,16 @@ def plot_omniparsebench_scatter():
     # (label, throughput_pg_s, headline_score, is_marker, dx_pts, dy_pts, ha)
     points = [
         ("MinerU 2.5-Pro", 0.54, 87.1, False, 0, 18, "center"),
-        ("DeepSeek-OCR-2", 0.80, 75.2, False, 0, -24, "center"),
-        ("PaddleOCR-VL-1.6", 1.25, 78.7, False, 8, 18, "center"),
-        ("PP-StructureV3", 0.18, 58.4, False, 0, -24, "center"),
-        ("docling", 2.09, 54.0, False, 0, -24, "center"),
-        ("Tesseract 5 (text)", 2.92, 17.6, False, 0, -24, "center"),
+        ("DeepSeek-OCR-2", 0.80, 75.2, False, -6, -22, "center"),
+        ("PaddleOCR-VL-1.6", 1.25, 78.7, False, 6, 18, "center"),
+        ("PP-StructureV3", 0.18, 58.4, False, 8, -22, "center"),
+        ("docling", 2.09, 67.5, False, 0, -22, "center"),
+        ("liteparse", 9.74, 14.0, False, 0, 18, "center"),
+        ("liteparse (no OCR)", 318.0, 12.0, False, -14, 18, "center"),
+        ("Tesseract 5", 2.92, 5.9, False, 0, 18, "center"),
         ("Marker  vllm", 4.52, 85.9, True, 0, 18, "center"),
         ("Marker  balanced", 16.9, 80.5, True, 0, 18, "center"),
-        ("Marker  fast", 23.6, 71.0, True, 0, -24, "center"),
+        ("Marker  fast", 23.6, 71.0, True, 0, -22, "center"),
         ("Marker  no_ocr", 57.0, 40.8, True, 0, 18, "center"),
     ]
 
@@ -113,14 +115,14 @@ def plot_omniparsebench_scatter():
             textcoords="offset points",
             ha=ha,
             va="center",
-            fontsize=11.5,
+            fontsize=11.0,
             fontweight="medium" if is_marker else "normal",
             color=text_color,
             zorder=5,
         )
 
     ax.set_xscale("log")
-    ax.set_xlim(0.11, 115)
+    ax.set_xlim(0.10, 750)
     ax.set_ylim(0, 100)
     ax.set_yticks([0, 20, 40, 60, 80, 100])
     ax.tick_params(axis="both", which="major", labelsize=10.5, length=0, pad=6)
@@ -135,8 +137,8 @@ def plot_omniparsebench_scatter():
     _add_header_footer(
         fig,
         "OmniParseBench  ·  quality vs. throughput",
-        "Headline score (Text, Tables, Layout) across 2,937 pages vs. sustained pages/sec.",
-        "16,288 pass/fail tests across 22 suites and 92 languages. Marker fast / no_ocr / PP-StructureV3 / Tesseract run on CPU; VLM & hybrid modes on GPU.",
+        "Headline score (Text, Tables, Layout) across 2,937 pages vs. sustained pages/sec.  Marker dominates the frontier.",
+        "16,288 pass/fail tests across 22 suites and 92 languages. Marker fast / no_ocr, liteparse, PP-StructureV3 & Tesseract run on CPU; VLM & hybrid modes on GPU.",
     )
     fig.savefig(OUT_DIR / "omniparsebench.png", dpi=200)
     plt.close(fig)
@@ -156,13 +158,14 @@ def plot_omniparsebench_scores_bar():
         ("Marker\nvllm", 85.9, True),
         ("GLM-OCR", 81.5, False),
         ("Marker\nbalanced", 80.5, True),
-        ("Nemotron\n3.5", 80.0, False),
         ("Paddle\nVL 1.6", 78.7, False),
         ("DeepSeek\nOCR 2", 75.2, False),
         ("Marker\nfast", 71.0, True),
+        ("docling", 67.5, False),
         ("Hunyuan\nOCR 1.5", 64.6, False),
         ("PP-Struct\nV3", 58.4, False),
         ("Marker\nno_ocr", 40.8, True),
+        ("liteparse", 14.0, False),
     ]
 
     xs = np.arange(len(items))
@@ -231,6 +234,7 @@ def plot_omniparsebench_families():
         ("Paddle\nVL 1.6", 61.7, 83.7, 90.7, False),
         ("DeepSeek\nOCR 2", 64.2, 70.0, 91.4, False),
         ("Marker\nfast", 62.3, 59.6, 91.2, True),
+        ("docling", 44.4, 72.0, 85.9, False),
         ("PP-Struct\nV3", 55.6, 47.8, 71.7, False),
     ]
 
@@ -312,11 +316,12 @@ def plot_throughput_bar():
         ("Marker\nno_ocr", 57.0, True),
         ("Marker\nfast", 23.6, True),
         ("Marker\nbalanced", 16.9, True),
-        ("liteparse", 8.9, False),
+        ("liteparse", 9.7, False),
         ("Marker\nvllm", 4.52, True),
         ("Tesseract 5", 2.92, False),
         ("docling", 2.09, False),
-        ("MinerU", 0.54, False),
+        ("Paddle\nVL 1.6", 1.25, False),
+        ("MinerU\n2.5-Pro", 0.54, False),
         ("PP-Struct\nV3", 0.18, False),
     ]
 
@@ -521,7 +526,7 @@ def plot_olmocr_charts():
     fig.savefig(OUT_DIR / "olmocr_bench.png", dpi=200)
     plt.close(fig)
 
-    # 2. olmocr_digital.png (CPU-only comparison)
+    # 2. olmocr_digital.png (CPU-only comparison on OmniParseBench)
     fig = plt.figure(figsize=(9.6, 6.6), dpi=200)
     ax = fig.add_axes([0.085, 0.13, 0.885, 0.68])
     _style_axes(ax)
@@ -529,10 +534,12 @@ def plot_olmocr_charts():
     cpu_points = [
         ("Marker  fast", 23.6, 71.0, True, -10, 18, "center"),
         ("Indra OCR", 49.4, 69.5, False, 15, 18, "center"),
-        ("Marker  no_ocr", 57.0, 55.8, True, 0, -24, "center"),
+        ("docling (CPU)", 1.38, 67.5, False, 0, 18, "center"),
+        ("Marker  no_ocr", 57.0, 40.8, True, 0, 18, "center"),
         ("PP-StructureV3", 0.18, 58.4, False, 10, -24, "center"),
-        ("liteparse", 8.9, 27.3, False, 0, -24, "center"),
-        ("Tesseract 5", 2.92, 17.6, False, 0, -24, "center"),
+        ("liteparse", 9.74, 14.0, False, 0, 18, "center"),
+        ("liteparse (no OCR)", 318.0, 12.0, False, -16, 18, "center"),
+        ("Tesseract 5", 2.92, 5.9, False, 0, 18, "center"),
     ]
 
     for label, x, y, is_marker, dx, dy, ha in cpu_points:
@@ -561,7 +568,7 @@ def plot_olmocr_charts():
         )
 
     ax.set_xscale("log")
-    ax.set_xlim(0.09, 150)
+    ax.set_xlim(0.09, 750)
     ax.set_ylim(0, 100)
     ax.set_yticks([0, 20, 40, 60, 80, 100])
     ax.tick_params(axis="both", which="major", labelsize=10.5, length=0, pad=6)
@@ -571,13 +578,13 @@ def plot_olmocr_charts():
         fontsize=11.5,
         labelpad=10,
     )
-    ax.set_ylabel("Benchmark score", fontsize=11.5, labelpad=10)
+    ax.set_ylabel("OmniParseBench headline score", fontsize=11.5, labelpad=10)
 
     _add_header_footer(
         fig,
         "CPU-only document parsing  ·  quality vs. throughput",
-        "Score vs. sustained pages/sec on CPU with no GPU required.",
-        "Marker fast and Indra OCR use in-process ONNX layout, reading order, and OCR on CPU; Marker no_ocr uses the PDF text layer + Indra ONNX layout.",
+        "OmniParseBench headline score vs. sustained pages/sec on CPU with no GPU required.",
+        "Marker fast & Indra OCR run in-process ONNX layout, reading order, and OCR on CPU; liteparse & Tesseract extract text without layout or table structure.",
     )
     fig.savefig(OUT_DIR / "olmocr_digital.png", dpi=200)
     plt.close(fig)
