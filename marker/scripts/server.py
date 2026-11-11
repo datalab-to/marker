@@ -7,10 +7,25 @@ from typing import Annotated, Any, Dict, Literal, Optional
 import urllib.parse
 
 import click
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from starlette.responses import HTMLResponse, JSONResponse
+
+try:
+    from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+    from fastapi.concurrency import run_in_threadpool
+    from starlette.responses import HTMLResponse, JSONResponse
+
+    _HAS_FASTAPI = True
+except ImportError:
+    _HAS_FASTAPI = False
+    FastAPI = None  # type: ignore[assignment]
+    Request = Any  # type: ignore[assignment,misc]
+    UploadFile = Any  # type: ignore[assignment,misc]
+
+    class HTTPException(Exception):  # type: ignore[no-redef]
+        def __init__(self, status_code: int = 400, detail: str = ""):
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
 
 from marker.config.parser import ConfigParser
 from marker.converters.pdf import PdfConverter
@@ -25,7 +40,6 @@ logger = get_logger()
 app_data: Dict[str, Any] = {}
 
 UPLOAD_DIRECTORY = os.path.abspath("./uploads")
-os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
 ALLOWED_Extensions = {
     ".pdf",
@@ -99,62 +113,61 @@ async def lifespan(app: FastAPI):
         del app_data["models"]
 
 
-app = FastAPI(
-    title="Marker API & Interactive Viewer",
-    version="2.1.0",
-    lifespan=lifespan,
-)
-
-
-@app.get("/")
-async def root():
-    return HTMLResponse(render_viewer_html())
-
-
-@app.get("/info")
-async def viewer_info():
-    return viewer_engine.info(has_api_docs=True)
-
-
-@app.post("/upload")
-async def viewer_upload(request: Request):
-    viewer_engine.max_upload_bytes = MAX_UPLOAD_SIZE
-    raw_header = request.headers.get("X-Filename", "document.pdf")
-    filename = urllib.parse.unquote(raw_header)
-    body = await request.body()
-    if len(body) > MAX_UPLOAD_SIZE:
-        return JSONResponse(
-            status_code=413,
-            content={"error": "Uploaded file exceeds maximum allowed size."},
-        )
-    try:
-        return await run_in_threadpool(viewer_engine.upload, body, filename)
-    except ValueError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-    except Exception:
-        logger.exception("Viewer upload failed")
-        return JSONResponse(status_code=400, content={"error": "File upload failed."})
-
-
 class ViewerPageParams(BaseModel):
     id: str
     n: int
     opts: Dict[str, Any] = Field(default_factory=dict)
 
 
-@app.post("/page")
-async def viewer_page(params: ViewerPageParams):
-    try:
-        return await run_in_threadpool(
-            viewer_engine.page, params.id, params.n, params.opts
-        )
-    except ValueError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-    except Exception as exc:
-        logger.exception("Viewer page conversion failed")
-        return JSONResponse(
-            status_code=400, content={"error": f"Conversion failed: {exc}"}
-        )
+if _HAS_FASTAPI:
+    app = FastAPI(
+        title="Marker API & Interactive Viewer",
+        version="2.1.0",
+        lifespan=lifespan,
+    )
+
+    @app.get("/")
+    async def root():
+        return HTMLResponse(render_viewer_html())
+
+    @app.get("/info")
+    async def viewer_info():
+        return viewer_engine.info(has_api_docs=True)
+
+    @app.post("/upload")
+    async def viewer_upload(request: Request):
+        viewer_engine.max_upload_bytes = MAX_UPLOAD_SIZE
+        raw_header = request.headers.get("X-Filename", "document.pdf")
+        filename = urllib.parse.unquote(raw_header)
+        body = await request.body()
+        if len(body) > MAX_UPLOAD_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Uploaded file exceeds maximum allowed size."},
+            )
+        try:
+            return await run_in_threadpool(viewer_engine.upload, body, filename)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        except Exception:
+            logger.exception("Viewer upload failed")
+            return JSONResponse(status_code=400, content={"error": "File upload failed."})
+
+    @app.post("/page")
+    async def viewer_page(params: ViewerPageParams):
+        try:
+            return await run_in_threadpool(
+                viewer_engine.page, params.id, params.n, params.opts
+            )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        except Exception as exc:
+            logger.exception("Viewer page conversion failed")
+            return JSONResponse(
+                status_code=400, content={"error": f"Conversion failed: {exc}"}
+            )
+else:
+    app = None
 
 
 OutputFormat = Literal["markdown", "json", "html", "chunks"]
@@ -288,90 +301,96 @@ async def _convert_pdf(params: CommonParams):
         }
 
 
-@app.post("/marker")
-async def convert_pdf(params: CommonParams):
-    return await _convert_pdf(params)
+if _HAS_FASTAPI:
 
-
-@app.post("/marker/upload")
-async def convert_pdf_upload(
-    page_range: Optional[str] = Form(default=None),
-    mode: Optional[ConversionMode] = Form(default=None),
-    ocr_backend: Optional[OcrBackend] = Form(default=None),
-    force_ocr: Optional[bool] = Form(default=False),
-    disable_ocr: Optional[bool] = Form(default=False),
-    use_llm: Optional[bool] = Form(default=False),
-    strip_existing_ocr: Optional[bool] = Form(default=False),
-    keep_headers_footers: Optional[bool] = Form(default=False),
-    paginate_output: Optional[bool] = Form(default=False),
-    output_format: Optional[OutputFormat] = Form(default="markdown"),
-    file: UploadFile = File(
-        ..., description="The PDF or document file to convert.", media_type="application/pdf"
-    ),
-):
-    raw_name = os.path.basename(file.filename or "upload.pdf")
-    ext = os.path.splitext(raw_name)[1].lower() or ".pdf"
-    if ext not in ALLOWED_Extensions:
-        raise HTTPException(status_code=400, detail="Unsupported file type.")
-
-    os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
-    fd, upload_path = tempfile.mkstemp(dir=UPLOAD_DIRECTORY, suffix=ext)
-    try:
-        total_bytes = 0
-        with os.fdopen(fd, "wb") as upload_file:
-            fd = None
-            while True:
-                chunk = await file.read(65536)
-                if not chunk:
-                    break
-                total_bytes += len(chunk)
-                if total_bytes > MAX_UPLOAD_SIZE:
-                    raise HTTPException(
-                        status_code=413,
-                        detail="Uploaded file exceeds maximum allowed size.",
-                    )
-                upload_file.write(chunk)
-
-        params = CommonParams(
-            filepath=upload_path,
-            page_range=page_range,
-            mode=mode,
-            ocr_backend=ocr_backend,
-            force_ocr=bool(force_ocr),
-            disable_ocr=bool(disable_ocr),
-            use_llm=bool(use_llm),
-            strip_existing_ocr=bool(strip_existing_ocr),
-            keep_headers_footers=bool(keep_headers_footers),
-            paginate_output=bool(paginate_output),
-            output_format=output_format or "markdown",
-        )
+    @app.post("/marker")
+    async def convert_pdf(params: CommonParams):
         return await _convert_pdf(params)
-    finally:
-        if fd is not None:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
-        if os.path.exists(upload_path):
-            try:
-                os.remove(upload_path)
-            except OSError:
-                pass
+
+    @app.post("/marker/upload")
+    async def convert_pdf_upload(
+        page_range: Optional[str] = Form(default=None),
+        mode: Optional[ConversionMode] = Form(default=None),
+        ocr_backend: Optional[OcrBackend] = Form(default=None),
+        force_ocr: Optional[bool] = Form(default=False),
+        disable_ocr: Optional[bool] = Form(default=False),
+        use_llm: Optional[bool] = Form(default=False),
+        strip_existing_ocr: Optional[bool] = Form(default=False),
+        keep_headers_footers: Optional[bool] = Form(default=False),
+        paginate_output: Optional[bool] = Form(default=False),
+        output_format: Optional[OutputFormat] = Form(default="markdown"),
+        file: UploadFile = File(
+            ...,
+            description="The PDF or document file to convert.",
+            media_type="application/pdf",
+        ),
+    ):
+        raw_name = os.path.basename(file.filename or "upload.pdf")
+        ext = os.path.splitext(raw_name)[1].lower() or ".pdf"
+        if ext not in ALLOWED_Extensions:
+            raise HTTPException(status_code=400, detail="Unsupported file type.")
+
+        os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+        fd, upload_path = tempfile.mkstemp(dir=UPLOAD_DIRECTORY, suffix=ext)
+        try:
+            total_bytes = 0
+            with os.fdopen(fd, "wb") as upload_file:
+                fd = None
+                while True:
+                    chunk = await file.read(65536)
+                    if not chunk:
+                        break
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_UPLOAD_SIZE:
+                        raise HTTPException(
+                            status_code=413,
+                            detail="Uploaded file exceeds maximum allowed size.",
+                        )
+                    upload_file.write(chunk)
+
+            params = CommonParams(
+                filepath=upload_path,
+                page_range=page_range,
+                mode=mode,
+                ocr_backend=ocr_backend,
+                force_ocr=bool(force_ocr),
+                disable_ocr=bool(disable_ocr),
+                use_llm=bool(use_llm),
+                strip_existing_ocr=bool(strip_existing_ocr),
+                keep_headers_footers=bool(keep_headers_footers),
+                paginate_output=bool(paginate_output),
+                output_format=output_format or "markdown",
+            )
+            return await _convert_pdf(params)
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if os.path.exists(upload_path):
+                try:
+                    os.remove(upload_path)
+                except OSError:
+                    pass
 
 
 @click.command()
 @click.option("--port", type=int, default=8000, help="Port to run the server on")
 @click.option("--host", type=str, default="127.0.0.1", help="Host to run the server on")
 def server_cli(port: int, host: str):
-    try:
-        import uvicorn
+    if _HAS_FASTAPI and app is not None:
+        try:
+            import uvicorn
 
-        print(
-            f"Marker Server & Viewer running on http://{host}:{port} (API docs at http://{host}:{port}/docs)",
-            flush=True,
-        )
-        uvicorn.run(app, host=host, port=port)
-    except ImportError:
-        from marker.scripts.viewer import viewer_cli
+            print(
+                f"Marker Server & Viewer running on http://{host}:{port} (API docs at http://{host}:{port}/docs)",
+                flush=True,
+            )
+            uvicorn.run(app, host=host, port=port)
+            return
+        except ImportError:
+            pass
+    from marker.scripts.viewer import viewer_cli
 
-        viewer_cli(port=port, host=host)
+    viewer_cli(port=port, host=host)

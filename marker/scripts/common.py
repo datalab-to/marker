@@ -11,9 +11,15 @@ from PIL import Image
 import click
 import pypdfium2
 
+import logging
+
 try:
     import streamlit as st
     from streamlit.runtime.uploaded_file_manager import UploadedFile
+
+    logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(
+        logging.ERROR
+    )
 except ImportError:
     class _DummyStreamlit:
         @staticmethod

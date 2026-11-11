@@ -49,6 +49,9 @@ def streamlit_app_cli(app_name: str = "streamlit_app.py"):
         import uvicorn
         from marker.scripts.server import app, viewer_engine
 
+        if app is None:
+            raise ImportError("FastAPI is not installed")
+
         viewer_engine.defaults.update(
             {
                 "mode": args.mode,
