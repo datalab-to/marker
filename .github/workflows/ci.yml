@@ -10,7 +10,7 @@ jobs:
       - name: Install apt requirements
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libcairo2 libffi-dev shared-mime-info
+          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libgdk-pixbuf-2.0-0 libcairo2 libffi-dev shared-mime-info
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -31,13 +31,13 @@ jobs:
   # runner too, so we catch CPU-only breakage (imports, weasyprint native libs,
   # pdftext) that the GPU job can't - it never exercises the no-GPU path.
   tests-cpu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install apt requirements
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libcairo2 libffi-dev shared-mime-info
+          sudo apt-get install -y libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 libgdk-pixbuf-2.0-0 libcairo2 libffi-dev shared-mime-info
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
