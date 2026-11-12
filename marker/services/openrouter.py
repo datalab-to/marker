@@ -43,6 +43,9 @@ class OpenRouterService(BaseService):
     ] = True
 
     def __init__(self, config=None):
+        if isinstance(config, BaseModel):
+            config = config.model_dump()
+
         # Fall back to $OPENROUTER_API_KEY so the key need not be passed
         # explicitly (must be set before BaseService verifies required keys).
         env_key = os.environ.get("OPENROUTER_API_KEY")
