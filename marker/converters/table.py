@@ -34,13 +34,16 @@ class TableConverter(PdfConverter):
         # The OCR builder is disabled here, so layout can never be skipped -
         # the table blocks must come from the layout pass
         layout_builder.force_ocr = False
+        layout_builder.ocr_full_page = False
         line_builder = self.resolve_dependencies(LineBuilder)
         ocr_builder = self.resolve_dependencies(OcrBuilder)
         document_builder = DocumentBuilder(self.config)
         document_builder.disable_ocr = True
 
-        provider = provider_cls(filepath, self.config)
-        document = document_builder(provider, layout_builder, line_builder, ocr_builder)
+        with provider_cls(filepath, self.config) as provider:
+            document = document_builder(
+                provider, layout_builder, line_builder, ocr_builder
+            )
 
         for page in document.pages:
             page.structure = [
@@ -51,10 +54,3 @@ class TableConverter(PdfConverter):
             processor(document)
 
         return document
-
-    def __call__(self, filepath: str):
-        document = self.build_document(filepath)
-        self.page_count = len(document.pages)
-
-        renderer = self.resolve_dependencies(self.renderer)
-        return renderer(document)

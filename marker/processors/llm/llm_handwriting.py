@@ -78,7 +78,13 @@ Formatting should be in markdown, with the following rules:
             block.update_metadata(llm_error_count=1)
             return
 
-        markdown = markdown.strip().lstrip("```markdown").rstrip("```").strip()
+        markdown = (
+            markdown.strip()
+            .removeprefix("```markdown")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
         block.html = markdown2.markdown(markdown, extras=["tables"])
 
 class HandwritingSchema(BaseModel):

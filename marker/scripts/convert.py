@@ -1,6 +1,8 @@
 import atexit
 import os
+import sys
 import time
+from typing import List
 
 import psutil
 import torch
@@ -21,28 +23,89 @@ os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
 os.environ["IN_STREAMLIT"] = "true"  # Avoid multiprocessing inside surya
 
+import gc
 import math
 import traceback
 
 import click
 import torch.multiprocessing as mp
 from tqdm import tqdm
-import gc
 
 from marker.config.parser import ConfigParser
 from marker.config.printer import CustomClickPrinter
 from marker.logger import configure_logging, get_logger
 from marker.models import create_model_dict
 from marker.output import output_exists, save_output
+from marker.settings import settings
+from marker.skills import get_skill_markdown, install_skill
 
 configure_logging()
 logger = get_logger()
 
+SUPPORTED_FILE_EXTENSIONS = {
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".tiff",
+    ".tif",
+    ".bmp",
+    ".pptx",
+    ".docx",
+    ".xlsx",
+    ".html",
+    ".htm",
+    ".epub",
+}
 
-def worker_init(model_device: str | None = None):
+
+def discover_input_files(in_path: str, recursive: bool = False) -> List[str]:
+    """Discover supported document files from a file path or directory."""
+    in_path = os.path.abspath(in_path)
+    if os.path.isfile(in_path):
+        return [in_path]
+    if not os.path.isdir(in_path):
+        raise FileNotFoundError(f"Input path does not exist: {in_path}")
+
+    discovered: List[str] = []
+    if recursive:
+        for root, dirs, filenames in os.walk(in_path):
+            dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+            for fname in sorted(filenames):
+                if fname.startswith("."):
+                    continue
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in SUPPORTED_FILE_EXTENSIONS:
+                    full = os.path.join(root, fname)
+                    if os.path.isfile(full):
+                        discovered.append(full)
+    else:
+        for fname in sorted(os.listdir(in_path)):
+            if fname.startswith("."):
+                continue
+            full = os.path.join(in_path, fname)
+            if not os.path.isfile(full):
+                continue
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in SUPPORTED_FILE_EXTENSIONS:
+                discovered.append(full)
+    return discovered
+
+
+def worker_init(
+    model_device: str | None = None,
+    load_indra: bool = True,
+    no_server: bool = False,
+):
     # The VLM predictors attach to the server the parent process spawned
     # (via SURYA_INFERENCE_URL). Only the small ocr error model loads locally.
-    model_dict = create_model_dict(device=model_device)
+    model_dict = create_model_dict(
+        device=model_device,
+        load_indra=load_indra,
+        no_server=no_server,
+    )
 
     global model_refs
     model_refs = model_dict
@@ -62,15 +125,19 @@ def worker_exit():
 def process_single_pdf(args):
     page_count = 0
     fpath, cli_options = args
-    torch.set_num_threads(cli_options["total_torch_threads"])
-    del cli_options["total_torch_threads"]
+    cli_options = dict(cli_options)
+    torch_threads = cli_options.pop("total_torch_threads", 2)
+    base_in_folder = cli_options.pop("_base_in_folder", None)
+    torch.set_num_threads(torch_threads)
 
     config_parser = ConfigParser(cli_options)
 
-    out_folder = config_parser.get_output_folder(fpath)
+    out_folder = config_parser.get_output_folder(
+        fpath, base_in_folder=base_in_folder
+    )
     base_name = config_parser.get_base_filename(fpath)
     if cli_options.get("skip_existing") and output_exists(out_folder, base_name):
-        return page_count
+        return (0, "skipped")
 
     converter_cls = config_parser.get_converter_cls()
     config_dict = config_parser.generate_config_dict()
@@ -93,25 +160,31 @@ def process_single_pdf(args):
             llm_service=config_parser.get_llm_service(),
         )
         rendered = converter(fpath)
-        out_folder = config_parser.get_output_folder(fpath)
+        out_folder = config_parser.get_output_folder(
+            fpath, base_in_folder=base_in_folder
+        )
         save_output(rendered, out_folder, base_name)
-        page_count = converter.page_count
+        page_count = converter.page_count or 0
 
         if cli_options.get("debug_print"):
-            logger.debug(f"Converted {fpath}")
+            logger.debug(f"Converted {fpath} ({page_count} pages)")
         del rendered
         del converter
+        return (page_count, "ok")
     except Exception as e:
         logger.error(f"Error converting {fpath}: {e}")
         traceback.print_exc()
+        return (0, "error")
     finally:
         gc.collect()
 
-    return page_count
 
-
-@click.command(cls=CustomClickPrinter)
-@click.argument("in_folder", type=str)
+@click.command(
+    cls=CustomClickPrinter,
+    help="Convert a folder of documents (or a single file) to Markdown, JSON, Chunks, or HTML.",
+)
+@click.version_option(version="2.2.0", prog_name="marker-pdf")
+@click.argument("in_folder", type=str, required=False, default=None)
 @click.option(
     "--chunk_idx",
     type=int,
@@ -126,7 +199,14 @@ def process_single_pdf(args):
     "one marker invocation per node, each with its own inference server).",
 )
 @click.option(
-    "--max_files", type=int, default=None, help="Maximum number of pdfs to convert"
+    "--max_files", type=int, default=None, help="Maximum number of files to convert."
+)
+@click.option(
+    "--recursive",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="Recursively search subdirectories for documents.",
 )
 @click.option(
     "--skip_existing",
@@ -147,19 +227,57 @@ def process_single_pdf(args):
     "--workers",
     type=int,
     default=None,
-    help="Number of worker processes to use.  Set automatically by default, but can be overridden.",
+    help="Number of worker processes to use. Set automatically by default, but can be overridden.",
+)
+@click.option(
+    "--skill",
+    is_flag=True,
+    default=False,
+    help="Print the Marker AI agent skill (SKILL.md) to stdout and exit.",
+)
+@click.option(
+    "--install_skill",
+    type=str,
+    default=None,
+    help="Install the Marker SKILL.md into the given directory (e.g. .agents/skills) and exit.",
 )
 @ConfigParser.common_options
-def convert_cli(in_folder: str, **kwargs):
+def convert_cli(
+    in_folder: str | None,
+    skill: bool = False,
+    install_skill_dir: str | None = None,
+    **kwargs,
+):
+    install_dir = kwargs.pop("install_skill", None) or install_skill_dir
+    if skill:
+        sys.stdout.write(get_skill_markdown())
+        return
+    if install_dir:
+        dest = install_skill(install_dir)
+        click.echo(f"Installed Marker skill to {dest}")
+        return
+    if not in_folder:
+        raise click.UsageError("Missing argument 'IN_FOLDER'.")
+
     total_pages = 0
     in_folder = os.path.abspath(in_folder)
-    files = [os.path.join(in_folder, f) for f in os.listdir(in_folder)]
-    files = [f for f in files if os.path.isfile(f)]
+    recursive = bool(kwargs.pop("recursive", False))
+    user_disabled_mp = bool(kwargs.get("disable_multiprocessing", False))
 
-    # Handle chunks if we're processing in parallel
-    # Ensure we get all files into a chunk
-    chunk_size = math.ceil(len(files) / kwargs["num_chunks"])
-    start_idx = kwargs["chunk_idx"] * chunk_size
+    files = discover_input_files(in_folder, recursive=recursive)
+    if not files:
+        logger.info(f"No supported documents found in {in_folder}.")
+        return
+
+    base_in_folder = (
+        in_folder if (recursive and os.path.isdir(in_folder)) else None
+    )
+
+    # Handle chunks if we're processing in parallel across nodes
+    num_chunks = max(1, int(kwargs["num_chunks"]))
+    chunk_idx = int(kwargs["chunk_idx"])
+    chunk_size = math.ceil(len(files) / num_chunks)
+    start_idx = chunk_idx * chunk_size
     end_idx = start_idx + chunk_size
     files_to_convert = files[start_idx:end_idx]
 
@@ -167,23 +285,67 @@ def convert_cli(in_folder: str, **kwargs):
     if kwargs["max_files"]:
         files_to_convert = files_to_convert[: kwargs["max_files"]]
 
-    # Disable nested multiprocessing
+    # Pre-filter already-converted files when --skip_existing is set so we
+    # don't spin up workers or an inference server for already-finished work.
+    skipped_pre = 0
+    if kwargs.get("skip_existing"):
+        preview_parser = ConfigParser(kwargs)
+        remaining = []
+        for fpath in files_to_convert:
+            out_dir = preview_parser.get_output_folder(
+                fpath, base_in_folder=base_in_folder
+            )
+            base_name = preview_parser.get_base_filename(fpath)
+            if output_exists(out_dir, base_name):
+                skipped_pre += 1
+            else:
+                remaining.append(fpath)
+        if skipped_pre:
+            logger.info(f"Skipping {skipped_pre} already-converted file(s).")
+        files_to_convert = remaining
+
+    if not files_to_convert:
+        logger.info("No files left to convert in this chunk.")
+        return
+
+    if kwargs.get("keep_server"):
+        os.environ["SURYA_INFERENCE_KEEP_ALIVE"] = "1"
+        try:
+            from surya.settings import settings as surya_settings
+
+            surya_settings.SURYA_INFERENCE_KEEP_ALIVE = True
+        except Exception:
+            pass
+
+    # Disable nested multiprocessing inside workers
     kwargs["disable_multiprocessing"] = True
+    kwargs["_base_in_folder"] = base_in_folder
 
-    try:
-        mp.set_start_method("spawn")  # Required for CUDA, forkserver doesn't work
-    except RuntimeError:
-        raise RuntimeError(
-            "Set start method to spawn twice. This may be a temporary issue with the script. Please try running it again."
-        )
+    raw_mode = kwargs.get("mode")
+    effective_mode = (
+        None if raw_mode in (None, "auto") else raw_mode
+    ) or ("balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast")
+    if kwargs.get("disable_ocr"):
+        effective_mode = "no_ocr"
 
-    chunk_idx = kwargs["chunk_idx"]
+    ocr_backend = kwargs.get("ocr_backend") or "auto"
+    uses_indra = ocr_backend == "indra" or (
+        ocr_backend == "auto" and effective_mode in ("fast", "indra")
+    )
+    no_server = (
+        bool(kwargs.get("disable_ocr"))
+        or effective_mode == "no_ocr"
+        or (uses_indra and effective_mode in ("fast", "indra"))
+    )
+    load_indra = effective_mode not in ("vllm", "surya", "accurate")
 
-    no_server = bool(kwargs.get("disable_ocr"))
     if no_server:
-        # Pure text-layer mode: no VLM at all, so no server and the pool is
-        # sized purely by CPU cores.
-        workers = kwargs["workers"] or get_worker_count(no_server=True)
+        # Pure CPU / ONNX mode: no VLM server, pool sized by CPU cores.
+        workers = (
+            1
+            if user_disabled_mp
+            else (kwargs["workers"] or get_worker_count(no_server=True))
+        )
         total_processes = max(1, min(len(files_to_convert), workers))
     else:
         # Spawn (or attach to) the shared inference server from the parent
@@ -195,7 +357,9 @@ def convert_cli(in_folder: str, **kwargs):
         server_handle = manager.backend.start()  # Idempotent, returns handle
         os.environ["SURYA_INFERENCE_URL"] = server_handle.base_url
 
-        workers = kwargs["workers"] or get_worker_count()
+        workers = (
+            1 if user_disabled_mp else (kwargs["workers"] or get_worker_count())
+        )
         total_processes = max(1, min(len(files_to_convert), workers))
 
         # Budget aggregate client concurrency to ~1.5x the server's capacity:
@@ -217,29 +381,67 @@ def convert_cli(in_folder: str, **kwargs):
     if total_processes > 1 and torch.cuda.is_available():
         model_device = "cpu"
 
-    kwargs["total_torch_threads"] = max(
-        2, psutil.cpu_count(logical=False) // total_processes
-    )
+    cpu_cores = psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 2
+    kwargs["total_torch_threads"] = max(2, cpu_cores // total_processes)
 
     logger.info(
-        f"Converting {len(files_to_convert)} pdfs in chunk {kwargs['chunk_idx'] + 1}/{kwargs['num_chunks']} with {total_processes} processes and saving to {kwargs['output_dir']}"
+        f"Converting {len(files_to_convert)} document(s) in chunk {chunk_idx + 1}/{num_chunks} "
+        f"(mode={effective_mode}) with {total_processes} process(es) -> {kwargs['output_dir']}"
     )
     task_args = [(f, kwargs) for f in files_to_convert]
 
     start_time = time.time()
-    with mp.Pool(
-        processes=total_processes,
-        initializer=worker_init,
-        initargs=(model_device,),
-        maxtasksperchild=kwargs["max_tasks_per_worker"],
-    ) as pool:
-        pbar = tqdm(total=len(task_args), desc="Processing PDFs", unit="pdf")
-        for page_count in pool.imap_unordered(process_single_pdf, task_args):
-            pbar.update(1)
-            total_pages += page_count
-        pbar.close()
+    converted_files = 0
+    failed_files = 0
 
-    total_time = time.time() - start_time
-    print(
-        f"Inferenced {total_pages} pages in {total_time:.2f} seconds, for a throughput of {total_pages / total_time:.2f} pages/sec for chunk {chunk_idx + 1}/{kwargs['num_chunks']}"
+    if total_processes == 1:
+        # Fast path: single file or --workers 1 / --disable_multiprocessing
+        # runs in-process without multiprocessing spawn overhead.
+        worker_init(model_device, load_indra, no_server)
+        try:
+            pbar = tqdm(total=len(task_args), desc="Processing documents", unit="doc")
+            for item in task_args:
+                res = process_single_pdf(item)
+                pages, status = res if isinstance(res, tuple) else (int(res or 0), "ok")
+                pbar.update(1)
+                total_pages += pages
+                if status == "ok":
+                    converted_files += 1
+                elif status == "error":
+                    failed_files += 1
+            pbar.close()
+        finally:
+            worker_exit()
+    else:
+        try:
+            mp.set_start_method("spawn", force=True)
+        except RuntimeError:
+            pass
+
+        with mp.Pool(
+            processes=total_processes,
+            initializer=worker_init,
+            initargs=(model_device, load_indra, no_server),
+            maxtasksperchild=kwargs["max_tasks_per_worker"],
+        ) as pool:
+            pbar = tqdm(total=len(task_args), desc="Processing documents", unit="doc")
+            for res in pool.imap_unordered(process_single_pdf, task_args):
+                pages, status = res if isinstance(res, tuple) else (int(res or 0), "ok")
+                pbar.update(1)
+                total_pages += pages
+                if status == "ok":
+                    converted_files += 1
+                elif status == "error":
+                    failed_files += 1
+            pbar.close()
+
+    total_time = max(1e-6, time.time() - start_time)
+    summary_msg = (
+        f"Converted {converted_files} file(s) ({total_pages} pages) in {total_time:.2f}s "
+        f"({total_pages / total_time:.2f} pages/sec) for chunk {chunk_idx + 1}/{num_chunks}"
     )
+    if skipped_pre:
+        summary_msg += f" [{skipped_pre} skipped]"
+    if failed_files:
+        summary_msg += f" [{failed_files} failed]"
+    print(summary_msg)

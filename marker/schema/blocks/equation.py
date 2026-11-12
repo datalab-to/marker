@@ -30,6 +30,18 @@ class Equation(Block):
             m = _P_WRAPPED.match(inner)
             if m and "<p" not in m.group(1):
                 inner = m.group(1)
+            if (
+                "<math" in inner
+                and 'display="block"' not in inner
+                and "display='block'" not in inner
+            ):
+                inner = re.sub(
+                    r"<math\b",
+                    '<math display="block"',
+                    inner,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
             html_out += f"""<p block-type='{self.block_type}'>{inner}</p>"""
             return html_out
         else:

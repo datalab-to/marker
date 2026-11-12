@@ -40,6 +40,8 @@ class OllamaService(BaseService):
             "properties": schema["properties"],
             "required": schema["required"],
         }
+        if "$defs" in schema:
+            format_schema["$defs"] = schema["$defs"]
 
         image_bytes = self.format_image_for_llm(image)
 
@@ -48,17 +50,23 @@ class OllamaService(BaseService):
             "prompt": prompt,
             "stream": False,
             "format": format_schema,
-            "images": image_bytes,
         }
+        if image_bytes:
+            payload["images"] = image_bytes
+
+        if timeout is None:
+            timeout = self.timeout
 
         try:
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(
+                url, json=payload, headers=headers, timeout=timeout
+            )
             response.raise_for_status()
             response_data = response.json()
 
-            total_tokens = (
-                response_data["prompt_eval_count"] + response_data["eval_count"]
-            )
+            total_tokens = response_data.get(
+                "prompt_eval_count", 0
+            ) + response_data.get("eval_count", 0)
 
             if block:
                 block.update_metadata(llm_request_count=1, llm_tokens_used=total_tokens)

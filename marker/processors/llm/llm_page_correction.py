@@ -191,8 +191,8 @@ User Prompt
 
         for block_data in blocks:
             try:
-                page_id, _, _ = block_data["id"].split("/")
-                unique_page_ids.add(page_id)
+                _, page_id, _, _ = block_data["id"].strip().lstrip("/").split("/")
+                unique_page_ids.add(str(page_id))
             except Exception as e:
                 logger.debug(f"Error parsing block ID {block_data['id']}: {e}")
                 continue
@@ -207,10 +207,12 @@ User Prompt
             block_ids_for_page = []
             for block_data in blocks:
                 try:
-                    page_id, block_type, block_id = block_data["id"].split("/")
+                    _, page_id, block_type, block_id = (
+                        block_data["id"].strip().lstrip("/").split("/")
+                    )
                     block_id = BlockId(
-                        page_id=page_id,
-                        block_id=block_id,
+                        page_id=int(page_id),
+                        block_id=int(block_id),
                         block_type=getattr(BlockTypes, block_type),
                     )
                     block_ids_for_page.append(block_id)
@@ -218,31 +220,25 @@ User Prompt
                     logger.debug(f"Error parsing block ID {block_data['id']}: {e}")
                     continue
 
-                # Both sides should have the same values, just be reordered
-                if not all(
-                    [
-                        block_id in document_page.structure
-                        for block_id in block_ids_for_page
-                    ]
-                ):
-                    logger.debug(
-                        f"Some blocks for page {page_id} not found in document"
-                    )
-                    continue
+            # Both sides should have the same values, just be reordered
+            if not all(
+                block_id in document_page.structure for block_id in block_ids_for_page
+            ):
+                logger.debug(
+                    f"Some blocks for page {page_id} not found in document"
+                )
+                continue
 
-                if not all(
-                    [
-                        block_id in block_ids_for_page
-                        for block_id in document_page.structure
-                    ]
-                ):
-                    logger.debug(
-                        f"Some blocks in document page {page_id} not found in response"
-                    )
-                    continue
+            if not all(
+                block_id in block_ids_for_page for block_id in document_page.structure
+            ):
+                logger.debug(
+                    f"Some blocks in document page {page_id} not found in response"
+                )
+                continue
 
-                # Swap the order of blocks in the document page
-                document_page.structure = block_ids_for_page
+            # Swap the order of blocks in the document page
+            document_page.structure = block_ids_for_page
 
     def handle_rewrites(self, blocks: list, document: Document):
         for block_data in blocks:
@@ -250,8 +246,8 @@ User Prompt
                 block_id = block_data["id"].strip().lstrip("/")
                 _, page_id, block_type, block_id = block_id.split("/")
                 block_id = BlockId(
-                    page_id=page_id,
-                    block_id=block_id,
+                    page_id=int(page_id),
+                    block_id=int(block_id),
                     block_type=getattr(BlockTypes, block_type),
                 )
                 block = document.get_block(block_id)
@@ -275,7 +271,7 @@ User Prompt
             return
 
         pbar = tqdm(
-            total=max(1, total_blocks - 1),
+            total=max(1, total_blocks),
             desc=f"{self.__class__.__name__} running",
             disable=self.disable_tqdm,
         )

@@ -113,8 +113,8 @@ class BaseLLMProcessor(BaseProcessor):
                 block_id = block_data["id"].strip().lstrip("/")
                 _, page_id, block_type, block_id = block_id.split("/")
                 block_id = BlockId(
-                    page_id=page_id,
-                    block_id=block_id,
+                    page_id=int(page_id),
+                    block_id=int(block_id),
                     block_type=getattr(BlockTypes, block_type),
                 )
                 block = document.get_block(block_id)

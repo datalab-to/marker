@@ -95,19 +95,16 @@ class PolygonBox(BaseModel):
         return [min_x, min_y, max_x, max_y]
 
     def expand(self, x_margin: float, y_margin: float) -> PolygonBox:
-        new_polygon = []
         x_margin = x_margin * self.width
         y_margin = y_margin * self.height
-        for idx, poly in enumerate(self.polygon):
-            if idx == 0:
-                new_polygon.append([poly[0] - x_margin, poly[1] - y_margin])
-            elif idx == 1:
-                new_polygon.append([poly[0] + x_margin, poly[1] - y_margin])
-            elif idx == 2:
-                new_polygon.append([poly[0] + x_margin, poly[1] + y_margin])
-            elif idx == 3:
-                new_polygon.append([poly[0] - x_margin, poly[1] + y_margin])
-        return PolygonBox(polygon=new_polygon)
+        p = self.polygon
+        new_polygon = [
+            [p[0][0] - x_margin, p[0][1] - y_margin],
+            [p[1][0] + x_margin, p[1][1] - y_margin],
+            [p[2][0] + x_margin, p[2][1] + y_margin],
+            [p[3][0] - x_margin, p[3][1] + y_margin],
+        ]
+        return PolygonBox.model_construct(polygon=new_polygon)
 
     def minimum_gap(self, other: PolygonBox):
         if self.intersection_pct(other) > 0:
@@ -165,18 +162,19 @@ class PolygonBox(BaseModel):
         width_scaler = img_width / page_width
         height_scaler = img_height / page_height
 
-        new_corners = copy.deepcopy(self.polygon)
-        for corner in new_corners:
-            corner[0] = corner[0] * width_scaler
-            corner[1] = corner[1] * height_scaler
-        return PolygonBox(polygon=new_corners)
+        new_corners = [
+            [corner[0] * width_scaler, corner[1] * height_scaler]
+            for corner in self.polygon
+        ]
+        return PolygonBox.model_construct(polygon=new_corners)
 
     def fit_to_bounds(self, bounds):
-        new_corners = copy.deepcopy(self.polygon)
-        for corner in new_corners:
-            corner[0] = max(min(corner[0], bounds[2]), bounds[0])
-            corner[1] = max(min(corner[1], bounds[3]), bounds[1])
-        return PolygonBox(polygon=new_corners)
+        b0, b1, b2, b3 = bounds[0], bounds[1], bounds[2], bounds[3]
+        new_corners = [
+            [max(min(corner[0], b2), b0), max(min(corner[1], b3), b1)]
+            for corner in self.polygon
+        ]
+        return PolygonBox.model_construct(polygon=new_corners)
 
     def overlap_x(self, other: PolygonBox):
         return max(
@@ -220,15 +218,26 @@ class PolygonBox(BaseModel):
 
     @classmethod
     def from_bbox(cls, bbox: List[float], ensure_nonzero_area=False):
+        x0, y0, x1, y1 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
         if ensure_nonzero_area:
-            bbox = list(bbox)
-            bbox[2] = max(bbox[2], bbox[0] + 1)
-            bbox[3] = max(bbox[3], bbox[1] + 1)
-        return cls(
+            x1 = max(x1, x0 + 1.0)
+            y1 = max(y1, y0 + 1.0)
+        elif x1 < x0 or y1 < y0:
+            return cls(
+                polygon=[
+                    [x0, y0],
+                    [x1, y0],
+                    [x1, y1],
+                    [x0, y1],
+                ]
+            )
+        obj = cls.model_construct(
             polygon=[
-                [bbox[0], bbox[1]],
-                [bbox[2], bbox[1]],
-                [bbox[2], bbox[3]],
-                [bbox[0], bbox[3]],
+                [x0, y0],
+                [x1, y0],
+                [x1, y1],
+                [x0, y1],
             ]
         )
+        obj.__dict__["bbox"] = [x0, y0, x1, y1]
+        return obj

@@ -17,8 +17,8 @@ import warnings
 
 warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
-# Suppress DecompressionBombError
-Image.MAX_IMAGE_PIXELS = None
+# Raise PIL limit to support high-DPI PDF page renders while preventing decompression bombs
+Image.MAX_IMAGE_PIXELS = 200_000_000
 
 
 class HTMLOutput(BaseModel):
@@ -126,16 +126,15 @@ class HTMLRenderer(BaseRenderer):
 
         return CONTENT_REF_RE.sub(repl, document_output.html)
 
-    def extract_html(self, document, document_output, level=0):
+    def extract_html(self, document, document_output):
         images = {}
         output = self.splice_content_refs(document, document_output, images)
-        if level == 0:
-            output = self.merge_consecutive_tags(output, "b")
-            output = self.merge_consecutive_tags(output, "i")
-            output = self.merge_consecutive_math(
-                output
-            )  # Merge consecutive inline math tags
-            output = textwrap.dedent(f"""
+        output = self.merge_consecutive_tags(output, "b")
+        output = self.merge_consecutive_tags(output, "i")
+        output = self.merge_consecutive_math(
+            output
+        )  # Merge consecutive inline math tags
+        output = textwrap.dedent(f"""
             <!DOCTYPE html>
             <html>
                 <head>
@@ -152,8 +151,6 @@ class HTMLRenderer(BaseRenderer):
     def __call__(self, document) -> HTMLOutput:
         document_output = document.render(self.block_config)
         full_html, images = self.extract_html(document, document_output)
-        soup = BeautifulSoup(full_html, "html.parser")
-        full_html = soup.prettify()  # Add indentation to the HTML
         return HTMLOutput(
             html=full_html,
             images=images,

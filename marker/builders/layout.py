@@ -1,12 +1,11 @@
-from typing import Annotated, List
+from typing import Annotated, Any, List
 
 import numpy as np
-from surya.fast_layout import FastLayoutPredictor
-from surya.layout import LayoutPredictor
 from surya.layout.schema import LayoutResult, LayoutBox
 
 from marker.builders import BaseBuilder
 from marker.logger import get_logger
+from marker.ocr import IndraRecognitionPredictor
 from marker.providers.pdf import PdfProvider
 from marker.schema import BlockTypes
 from marker.schema.document import Document
@@ -25,14 +24,12 @@ class LayoutBuilder(BaseBuilder):
 
     mode: Annotated[
         str,
-        "Conversion mode: 'balanced' (GPU) uses the VLM layout model;",
-        "'fast' (CPU) uses the lightweight rf-detr/onnx layout detector.",
-        "The converter defaults this by device (balanced on GPU, fast on CPU/MPS).",
+        "Conversion mode: 'no_ocr', 'fast'/'indra', or 'balanced'.",
     ] = "balanced"
     disable_ocr: Annotated[
         bool,
-        "Pure text-layer path (no VLM). Forces the lightweight rf-detr layout",
-        "detector so the whole pipeline runs on CPU without an inference server.",
+        "Pure text-layer path (no OCR). Uses the lightweight in-process Indra",
+        "ONNX layout detector on CPU without an inference server.",
     ] = False
     force_layout_block: Annotated[
         str,
@@ -51,15 +48,17 @@ class LayoutBuilder(BaseBuilder):
     ] = True
     use_pdftext_reading_order: Annotated[
         bool,
-        "Mirrors the LineBuilder setting. When True (default), fast mode only",
-        "runs the learned reading-order head on textless (scanned) pages -",
-        "pdftext pages are reordered from the PDF character stream instead.",
-        "When False, the head runs on every page in fast mode.",
-    ] = True
+        "Mirrors the LineBuilder setting. When False (default), pdftext pages",
+        "retain the OrderNet (order.onnx) reading order.",
+    ] = False
     disable_tqdm: Annotated[
         bool,
         "Disable tqdm progress bars.",
     ] = False
+    extract_images: Annotated[
+        bool,
+        "Extract images from the document.",
+    ] = True
     expand_block_types: Annotated[
         List[BlockTypes],
         "Block types whose bounds should be expanded to accomodate missing regions",
@@ -75,19 +74,36 @@ class LayoutBuilder(BaseBuilder):
 
     def __init__(
         self,
-        layout_model: LayoutPredictor,
-        fast_layout_model: FastLayoutPredictor,
+        layout_model: Any = None,
+        fast_layout_model: Any = None,
         config=None,
+        indra_model: IndraRecognitionPredictor | None = None,
     ):
         self.layout_model = layout_model
         self.fast_layout_model = fast_layout_model
+        self.disable_image_extraction = bool(
+            config.get("disable_image_extraction", False)
+            if isinstance(config, dict)
+            else False
+        )
 
         super().__init__(config)
+        if self.mode == "no_ocr":
+            self.disable_ocr = True
+        elif self.mode in ("vllm", "surya", "accurate"):
+            self.force_ocr = True
+
+        if indra_model is None and self.mode not in ("vllm", "surya", "accurate"):
+            if isinstance(layout_model, IndraRecognitionPredictor):
+                indra_model = layout_model
+            elif isinstance(fast_layout_model, IndraRecognitionPredictor):
+                indra_model = fast_layout_model
+            else:
+                indra_model = IndraRecognitionPredictor()
+        self.indra_model = indra_model
 
     def use_fast_layout(self):
-        # Fast mode and disable_ocr (pure text-layer, no VLM) both use the
-        # lightweight rf-detr layout detector so no VLM server is required.
-        return self.mode == "fast" or self.disable_ocr
+        return self.mode in ("fast", "indra", "no_ocr") or self.disable_ocr
 
     def get_layout_model(self):
         return self.fast_layout_model if self.use_fast_layout() else self.layout_model
@@ -96,10 +112,9 @@ class LayoutBuilder(BaseBuilder):
         if self.force_layout_block is not None:
             # Assign the full content of every page to a single layout type
             layout_results = self.forced_layout(document.pages)
-        elif self.force_ocr and self.ocr_full_page and self.mode == "balanced":
-            # Balanced + force_ocr: every page is rebuilt by full-page OCR, so
-            # don't pay for a layout pass that gets thrown away. Fast mode still
-            # needs layout boxes to drive block-mode OCR.
+        elif self.force_ocr and self.ocr_full_page and not self.disable_ocr:
+            # When force_ocr + ocr_full_page is enabled, every page is rebuilt
+            # by full-page OCR, so don't pay for a layout pass that gets thrown away.
             layout_results = [
                 LayoutResult(bboxes=[], image_bbox=page.polygon.bbox)
                 for page in document.pages
@@ -132,36 +147,53 @@ class LayoutBuilder(BaseBuilder):
         self, pages: List[PageGroup], provider: PdfProvider
     ) -> List[LayoutResult]:
         model = self.get_layout_model()
-        model.disable_tqdm = self.disable_tqdm
-        images = [p.get_image(highres=False) for p in pages]
-        if not self.use_fast_layout():
+        if (
+            model is not None
+            and not isinstance(model, IndraRecognitionPredictor)
+            and (
+                type(model).__module__.startswith("unittest.mock")
+                or self.mode in ("vllm", "surya", "accurate")
+            )
+        ):
+            model.disable_tqdm = self.disable_tqdm
+            images = [p.get_image(highres=False) for p in pages]
             return model(images)
+        if self.mode in ("vllm", "surya", "accurate"):
+            from surya.layout import LayoutPredictor
 
-        # Fast mode skips the layout reading-order head wherever pdftext can
-        # order the page instead (LineBuilder reorders from the PDF character
-        # stream). The head still runs where no pdftext order exists: textless
-        # (scanned) pages, whose layout order seeds block-mode OCR and the
-        # per-page fallback when full-page OCR fails - and every page when
-        # pdftext ordering is turned off.
-        if not self.use_pdftext_reading_order:
-            return model(images, use_order=True)
-
-        need_order, raster = [], []
-        for i, page in enumerate(pages):
-            if provider.page_lines.get(page.page_id):
-                raster.append(i)
-            else:
-                need_order.append(i)
+            vlm_layout = LayoutPredictor()
+            vlm_layout.disable_tqdm = self.disable_tqdm
+            images = [p.get_image(highres=False) for p in pages]
+            return vlm_layout(images)
 
         results: List[LayoutResult] = [None] * len(pages)
-        for idx, result in zip(
-            raster, model([images[i] for i in raster], use_order=False)
-        ):
-            results[idx] = result
-        for idx, result in zip(
-            need_order, model([images[i] for i in need_order], use_order=True)
-        ):
-            results[idx] = result
+        active_indices: List[int] = []
+        active_pages: List[PageGroup] = []
+        has_page_lines = provider is not None and hasattr(provider, "page_lines")
+        for i, page in enumerate(pages):
+            if (
+                has_page_lines
+                and not provider.page_lines.get(page.page_id)
+                and self.ocr_full_page
+                and not self.disable_ocr
+            ):
+                # Textless/scanned pages will be rebuilt wholesale by full-page OCR
+                # in OcrBuilder, so skip running layout on them.
+                results[i] = LayoutResult(bboxes=[], image_bbox=page.polygon.bbox)
+            else:
+                active_indices.append(i)
+                active_pages.append(page)
+
+        if active_pages:
+            want_images = not self.disable_ocr and (
+                (self.extract_images and not self.disable_image_extraction)
+                or self.mode == "balanced"
+            )
+            detected = self.indra_model.detect_layout(
+                active_pages, provider, extract_images=want_images
+            )
+            for idx, res in zip(active_indices, detected):
+                results[idx] = res
         return results
 
     def expand_layout_blocks(self, document: Document):

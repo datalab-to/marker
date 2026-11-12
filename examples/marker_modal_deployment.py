@@ -13,17 +13,15 @@ MODEL_PATH_PREFIX = "/root/.cache/datalab/models"
 
 # Define the container image with all dependencies
 image = (
-    modal.Image.debian_slim(python_version="3.10")
+    modal.Image.debian_slim(python_version="3.11")
     .apt_install(["git", "wget"])
     .env({"TORCH_DEVICE": "cuda"})
     .pip_install([
-        "marker-pdf[full]",
-        "fastapi==0.104.1",
-        "uvicorn==0.24.0",
-        "python-multipart==0.0.6",
-        "torch>=2.2.2,<3.0.0",
-        "torchvision>=0.17.0",
-        "torchaudio>=2.2.0",
+        "marker-pdf[full]>=2.1.0",
+        "fastapi>=0.115.4",
+        "uvicorn>=0.32.0",
+        "python-multipart>=0.0.16",
+        "torch>=2.7.0,<3.0.0",
     ])
 )
 
@@ -176,6 +174,7 @@ class MarkerModalDemoService:
         async def convert_document(
             file: UploadFile = File(..., description="Document to convert"),
             page_range: Optional[str] = Form(None),
+            mode: Optional[str] = Form("balanced"),
             force_ocr: bool = Form(False),
             paginate_output: bool = Form(False),
             output_format: str = Form("markdown"),
@@ -203,19 +202,31 @@ class MarkerModalDemoService:
                     detail="Output format must be one of: markdown, json, html, chunks"
                 )
 
+            temp_path = None
             try:
-                # Read file content
-                file_content = await file.read()
+                import tempfile
 
-                # Save to temporary file
-                temp_path = f"/tmp/{file.filename}"
-                with open(temp_path, "wb") as temp_file:
-                    temp_file.write(file_content)
+                max_upload_bytes = 100 * 1024 * 1024
+                fd, temp_path = tempfile.mkstemp(suffix=file_ext)
+                total_bytes = 0
+                with os.fdopen(fd, "wb") as temp_file:
+                    while True:
+                        chunk = await file.read(65536)
+                        if not chunk:
+                            break
+                        total_bytes += len(chunk)
+                        if total_bytes > max_upload_bytes:
+                            raise HTTPException(
+                                status_code=413,
+                                detail="Uploaded file exceeds maximum allowed size.",
+                            )
+                        temp_file.write(chunk)
 
                 # Configure conversion parameters
                 config = {
                     "filepath": temp_path,
                     "page_range": page_range,
+                    "mode": mode,
                     "force_ocr": force_ocr,
                     "paginate_output": paginate_output,
                     "output_format": output_format,
@@ -283,9 +294,13 @@ class MarkerModalDemoService:
                     "page_count": len(metadata.get("page_stats", [])),
                 })
 
+            except HTTPException:
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                raise
             except Exception as e:
                 # Clean up temp file if it exists
-                if os.path.exists(temp_path):
+                if temp_path and os.path.exists(temp_path):
                     os.unlink(temp_path)
 
                 logger.error(f"Conversion error for {file.filename}: {str(e)}")
@@ -293,7 +308,7 @@ class MarkerModalDemoService:
 
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Conversion failed: {str(e)}"
+                    detail="Conversion failed due to an internal server error."
                 )
 
         return web_app

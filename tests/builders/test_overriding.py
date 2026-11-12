@@ -36,7 +36,7 @@ def get_lines(pdf: str, config=None):
     return provider.get_page_lines(0)
 
 
-def test_overriding_mp():
+def test_overriding_mp(pdf_dataset):
     config = {
         "page_range": [0],
         "override_map": {BlockTypes.Line: NewLine}

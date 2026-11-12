@@ -26,7 +26,7 @@ class ImageProvider(BaseProvider):
             self.page_range = range(self.image_count)
 
         assert max(self.page_range) < self.image_count and min(self.page_range) >= 0, (
-            f"Invalid page range, values must be between 0 and {len(self.doc) - 1}.  Min of provided page range is {min(self.page_range)} and max is {max(self.page_range)}."
+            f"Invalid page range, values must be between 0 and {self.image_count - 1}.  Min of provided page range is {min(self.page_range)} and max is {max(self.page_range)}."
         )
 
         self.page_bboxes = {
@@ -38,21 +38,24 @@ class ImageProvider(BaseProvider):
         return self.image_count
 
     def get_images(self, idxs: List[int], dpi: int) -> List[Image.Image]:
-        # Treat the native image as 96 dpi - higher dpi requests (OCR) get an
-        # upscaled copy so small images stay legible for the model
+        # Treat small images (<1000px long side) as 96 dpi so higher dpi
+        # requests (OCR) get an upscaled copy; keep full-page scans at native size.
         scale = dpi / 96
         if scale <= 1:
             return [self.images[i] for i in idxs]
-        return [
-            self.images[i].resize(
-                (
-                    int(self.images[i].size[0] * scale),
-                    int(self.images[i].size[1] * scale),
-                ),
-                Image.LANCZOS,
-            )
-            for i in idxs
-        ]
+        out = []
+        for i in idxs:
+            img = self.images[i]
+            if max(img.size) >= 1000:
+                out.append(img)
+            else:
+                out.append(
+                    img.resize(
+                        (int(img.size[0] * scale), int(img.size[1] * scale)),
+                        Image.LANCZOS,
+                    )
+                )
+        return out
 
     def get_page_bbox(self, idx: int) -> PolygonBox | None:
         bbox = self.page_bboxes[idx]

@@ -152,6 +152,7 @@ class PageGroup(Group):
         max_intersections = {}
 
         block_bboxes = [block.polygon.bbox for block in blocks]
+        block_areas = [max(block.polygon.area, 1.0) for block in blocks]
         line_bboxes = [
             provider_output.line.polygon.bbox for provider_output in provider_outputs
         ]
@@ -163,7 +164,20 @@ class PageGroup(Group):
             if intersection_line.sum() == 0:
                 continue
 
-            max_intersection = intersection_line.argmax()
+            max_val = float(intersection_line.max())
+            # When multiple blocks contain the line equally well, prefer the
+            # smallest-area (tightest) block so large blocks don't swallow
+            # adjacent headers, captions, or equations.
+            candidates = [
+                idx
+                for idx, val in enumerate(intersection_line)
+                if val >= max_val * 0.99
+            ]
+            if len(candidates) > 1:
+                max_intersection = min(candidates, key=lambda idx: block_areas[idx])
+            else:
+                max_intersection = candidates[0]
+
             max_intersections[line_idx] = (
                 intersection_matrix[line_idx, max_intersection],
                 blocks[max_intersection].id,
@@ -244,7 +258,7 @@ class PageGroup(Group):
                 dist = block.polygon.center_distance(
                     existing_block.polygon, x_weight=5, absolute=True
                 )
-                if dist > 0 and min_dist_idx is None or dist < min_dist:
+                if dist > 0 and (min_dist_idx is None or dist < min_dist):
                     min_dist = dist
                     min_dist_idx = existing_block.id
 
@@ -276,12 +290,13 @@ class PageGroup(Group):
                 lines = [lines[i] for i in argsort]
 
             block = self.get_block(block_id)
+            line_polys_to_merge = []
             for provider_output in lines:
                 line = provider_output.line
                 spans = provider_output.spans
                 self.add_full_block(line)
                 block.add_structure(line)
-                block.polygon = block.polygon.merge([line.polygon])
+                line_polys_to_merge.append(line.polygon)
                 block.text_extraction_method = text_extraction_method
                 for span_idx, span in enumerate(spans):
                     self.add_full_block(span)
@@ -299,6 +314,8 @@ class PageGroup(Group):
                         char.page_id = self.page_id
                         self.add_full_block(char)
                         span.add_structure(char)
+            if line_polys_to_merge:
+                block.polygon = block.polygon.merge(line_polys_to_merge)
 
     def merge_blocks(
         self,

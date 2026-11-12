@@ -8,6 +8,7 @@ from PIL import Image
 from marker.logger import get_logger
 
 from marker.providers.pdf import PdfProvider
+from marker.providers.utils import safe_weasyprint_url_fetcher, validate_zip_archive
 
 logger = get_logger()
 
@@ -57,16 +58,25 @@ class DocumentProvider(PdfProvider):
 
         # Convert DOCX to PDF
         try:
+            validate_zip_archive(filepath)
             self.convert_docx_to_pdf(filepath)
+            super().__init__(self.temp_pdf_path, config)
         except Exception as e:
-            raise RuntimeError(f"Failed to convert {filepath} to PDF: {e}")
+            self._cleanup_temp_pdf()
+            raise RuntimeError(f"Failed to convert {filepath} to PDF: {e}") from e
 
-        # Initialize the PDF provider with the temp pdf path
-        super().__init__(self.temp_pdf_path, config)
+    def _cleanup_temp_pdf(self):
+        if getattr(self, "temp_pdf_path", None) and os.path.exists(self.temp_pdf_path):
+            try:
+                os.remove(self.temp_pdf_path)
+            except OSError:
+                pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._cleanup_temp_pdf()
 
     def __del__(self):
-        if os.path.exists(self.temp_pdf_path):
-            os.remove(self.temp_pdf_path)
+        self._cleanup_temp_pdf()
 
     def convert_docx_to_pdf(self, filepath: str):
         from weasyprint import CSS, HTML
@@ -78,7 +88,10 @@ class DocumentProvider(PdfProvider):
             html = result.value
 
             # We convert the HTML into a PDF
-            HTML(string=self._preprocess_base64_images(html)).write_pdf(
+            HTML(
+                string=self._preprocess_base64_images(html),
+                url_fetcher=safe_weasyprint_url_fetcher,
+            ).write_pdf(
                 self.temp_pdf_path, stylesheets=[CSS(string=css), self.get_font_css()]
             )
 

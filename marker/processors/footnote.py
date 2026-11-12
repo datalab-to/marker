@@ -18,9 +18,11 @@ class FootnoteProcessor(BaseProcessor):
             self.assign_superscripts(page, document)
 
     def push_footnotes_to_bottom(self, page: PageGroup, document: Document):
-        footnote_blocks = page.contained_blocks(document, self.block_types)
+        footnote_blocks = page.contained_blocks(
+            document, (BlockTypes.Footnote, BlockTypes.PageFooter)
+        )
 
-        # Push footnotes to the bottom
+        # Push footnotes and page footers to the bottom
         for block in footnote_blocks:
             # Check if it is top-level
             if block.id in page.structure:

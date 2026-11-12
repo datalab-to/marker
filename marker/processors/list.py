@@ -57,12 +57,12 @@ class ListProcessor(BaseProcessor):
     def list_group_indentation(self, document: Document):
         for page in document.pages:
             for block in page.contained_blocks(document, self.block_types):
-                if block.structure is None:
+                if not block.structure:
                     continue
                 if block.ignore_for_output:
                     continue
 
-                stack: List[ListItem] = [block.get_next_block(page, None)]
+                stack: List[ListItem] = []
                 for list_item_id in block.structure:
                     list_item_block: ListItem = page.get_block(list_item_id)
 
@@ -79,14 +79,20 @@ class ListProcessor(BaseProcessor):
                             list_item_block.list_indent_level += 1
 
                     next_list_item_block = block.get_next_block(page, list_item_block)
-                    if next_list_item_block is not None and next_list_item_block.polygon.x_start > list_item_block.polygon.x_end:
+                    if (
+                        next_list_item_block is not None
+                        and next_list_item_block.block_type == BlockTypes.ListItem
+                        and next_list_item_block.polygon.x_start > list_item_block.polygon.x_end
+                    ):
                         stack = [next_list_item_block]  # reset stack on column breaks
                     else:
                         stack.append(list_item_block)
 
-                stack: List[ListItem] = [block.get_next_block(page, None)]
+                stack: List[ListItem] = []
                 for list_item_id in block.structure.copy():
                     list_item_block: ListItem = page.get_block(list_item_id)
+                    if list_item_block.block_type != BlockTypes.ListItem:
+                        continue
 
                     while stack and list_item_block.list_indent_level <= stack[-1].list_indent_level:
                         stack.pop()

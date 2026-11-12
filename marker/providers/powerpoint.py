@@ -5,6 +5,7 @@ import traceback
 
 from marker.logger import get_logger
 from marker.providers.pdf import PdfProvider
+from marker.providers.utils import safe_weasyprint_url_fetcher, validate_zip_archive
 
 logger = get_logger()
 
@@ -49,17 +50,25 @@ class PowerPointProvider(PdfProvider):
 
         # Convert PPTX to PDF
         try:
+            validate_zip_archive(filepath)
             self.convert_pptx_to_pdf(filepath)
+            super().__init__(self.temp_pdf_path, config)
         except Exception as e:
-            print(traceback.format_exc())
-            raise ValueError(f"Error converting PPTX to PDF: {e}")
+            self._cleanup_temp_pdf()
+            raise ValueError(f"Error converting PPTX to PDF: {e}") from e
 
-        # Initalize the PDF provider with the temp pdf path
-        super().__init__(self.temp_pdf_path, config)
+    def _cleanup_temp_pdf(self):
+        if getattr(self, "temp_pdf_path", None) and os.path.exists(self.temp_pdf_path):
+            try:
+                os.remove(self.temp_pdf_path)
+            except OSError:
+                pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._cleanup_temp_pdf()
 
     def __del__(self):
-        if os.path.exists(self.temp_pdf_path):
-            os.remove(self.temp_pdf_path)
+        self._cleanup_temp_pdf()
 
     def convert_pptx_to_pdf(self, filepath):
         from weasyprint import CSS, HTML
@@ -105,7 +114,10 @@ class PowerPointProvider(PdfProvider):
         html = "\n".join(html_parts)
 
         # We convert the HTML into a PDF
-        HTML(string=html).write_pdf(
+        HTML(
+            string=html,
+            url_fetcher=safe_weasyprint_url_fetcher,
+        ).write_pdf(
             self.temp_pdf_path, stylesheets=[CSS(string=css), self.get_font_css()]
         )
 

@@ -74,17 +74,18 @@ class PdfConverter(BaseConverter):
     ] = False
     mode: Annotated[
         str,
-        "Conversion mode. 'balanced' uses the VLM layout model and full-page OCR;",
-        "'fast' uses lightweight rf-detr/onnx detectors for layout + tables and only",
-        "block-OCRs garbled/empty content. Defaults by device: 'balanced' on GPU,",
-        "'fast' on CPU/MPS.",
+        "Conversion mode: 'no_ocr' (pure PDF text layer + Indra layout),",
+        "'fast'/'indra' (Indra ONNX layout + OCR), 'balanced' (smart routing:",
+        "Indra + pdftext on clean prose, Surya VLM on tables/math/scanned pages),",
+        "or 'vllm' ('surya'/'accurate': full-page Surya VLM OCR on every page,",
+        "skipping pdftext and Indra entirely). Defaults by device: 'balanced' on",
+        "GPU, 'fast' on CPU/MPS.",
     ] = None
     default_processors: Tuple[BaseProcessor, ...] = (
         BlockRelabelProcessor,
         LineMergeProcessor,
         BlockquoteProcessor,
         CodeProcessor,
-        DocumentTOCProcessor,
         EquationProcessor,
         FootnoteProcessor,
         IgnoreTextProcessor,
@@ -105,9 +106,11 @@ class PdfConverter(BaseConverter):
         LLMMathBlockProcessor,
         LLMSectionHeaderProcessor,
         LLMPageCorrectionProcessor,
+        DocumentTOCProcessor,
         ReferenceProcessor,
         BlankPageProcessor,
         DebugProcessor,
+        DocumentTOCProcessor,
     )
     default_llm_service: BaseService = GoogleGeminiService
 
@@ -125,12 +128,19 @@ class PdfConverter(BaseConverter):
             config = {}
 
         # Resolve a device-appropriate default mode when the caller didn't choose
-        # one. 'balanced' leans on the VLM for layout + full-page OCR and wants a
-        # GPU; cpu/mps default to 'fast' (rf-detr/onnx layout, minimal VLM use).
+        # one. 'balanced' leans on the VLM for complex pages and wants a GPU;
+        # cpu/mps default to 'fast' (in-process Indra ONNX layout and OCR).
         if not config.get("mode"):
-            config["mode"] = (
-                "balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast"
-            )
+            if config.get("disable_ocr"):
+                config["mode"] = "no_ocr"
+            else:
+                config["mode"] = (
+                    "balanced" if settings.TORCH_DEVICE_MODEL == "cuda" else "fast"
+                )
+        elif config["mode"] == "no_ocr":
+            config["disable_ocr"] = True
+        elif config["mode"] in ("vllm", "surya", "accurate"):
+            config["force_ocr"] = True
         self.config = config
         self.mode = config["mode"]
 
@@ -169,11 +179,11 @@ class PdfConverter(BaseConverter):
         self.page_count = None  # Track how many pages were converted
 
     @contextmanager
-    def filepath_to_str(self, file_input: Union[str, io.BytesIO]):
+    def filepath_to_str(self, file_input: Union[str, os.PathLike, io.BytesIO]):
         temp_file = None
         try:
-            if isinstance(file_input, str):
-                yield file_input
+            if isinstance(file_input, (str, os.PathLike)):
+                yield os.fspath(file_input)
             else:
                 with tempfile.NamedTemporaryFile(
                     delete=False, suffix=".pdf"
@@ -183,7 +193,7 @@ class PdfConverter(BaseConverter):
                         temp_file.write(file_input.getvalue())
                     else:
                         raise TypeError(
-                            f"Expected str or BytesIO, got {type(file_input)}"
+                            f"Expected str, PathLike, or BytesIO, got {type(file_input)}"
                         )
 
                 yield temp_file.name
@@ -196,10 +206,10 @@ class PdfConverter(BaseConverter):
         layout_builder = self.resolve_dependencies(self.layout_builder_class)
         line_builder = self.resolve_dependencies(LineBuilder)
         ocr_builder = self.resolve_dependencies(OcrBuilder)
-        provider = provider_cls(filepath, self.config)
-        document = DocumentBuilder(self.config)(
-            provider, layout_builder, line_builder, ocr_builder
-        )
+        with provider_cls(filepath, self.config) as provider:
+            document = DocumentBuilder(self.config)(
+                provider, layout_builder, line_builder, ocr_builder
+            )
         structure_builder_cls = self.resolve_dependencies(StructureBuilder)
         structure_builder_cls(document)
 
