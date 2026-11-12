@@ -64,7 +64,6 @@ class DebugProcessor(BaseProcessor):
             png_image = page.get_image(highres=True).copy()
 
             line_bboxes = []
-            span_bboxes = []
             line_ids = []
             for child in page.children:
                 # Skip any blocks that have been removed
@@ -75,9 +74,6 @@ class DebugProcessor(BaseProcessor):
                     bbox = child.polygon.rescale(page.polygon.size, png_image.size).bbox
                     line_bboxes.append(bbox)
                     line_ids.append(child.block_id)
-                elif child.block_type == BlockTypes.Span:
-                    bbox = child.polygon.rescale(page.polygon.size, png_image.size).bbox
-                    span_bboxes.append(bbox)
 
             self.render_on_image(
                 line_bboxes,
@@ -93,7 +89,7 @@ class DebugProcessor(BaseProcessor):
             debug_file = os.path.join(self.debug_folder, f"pdf_page_{page.page_id}.png")
             png_image.save(debug_file)
 
-    def draw_layout_debug_images(self, document: Document, pdf_mode=False):
+    def draw_layout_debug_images(self, document: Document):
         for page in document.pages:
             img_size = page.get_image(highres=True).size
             png_image = Image.new("RGB", img_size, color="white")
@@ -178,10 +174,8 @@ class DebugProcessor(BaseProcessor):
             json.dump(debug_data, f)
 
     def get_text_size(self, text, font):
-        im = Image.new(mode="P", size=(0, 0))
-        draw = ImageDraw.Draw(im)
-        _, _, width, height = draw.textbbox((0, 0), text=text, font=font)
-        return width, height
+        left, top, right, bottom = font.getbbox(text)
+        return right - left, bottom - top
 
     def render_on_image(
         self,

@@ -61,4 +61,7 @@ class BaseTable(Block):
             return template + self.format_cells(document, child_blocks, block_config)
         else:
             # Default text lines and spans
-            return f"<p>{template}</p>"
+            full_template = super().assemble_html(
+                document, child_blocks, parent_structure, block_config
+            )
+            return f"<p>{full_template}</p>"

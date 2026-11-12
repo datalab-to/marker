@@ -6,12 +6,16 @@ import regex
 
 from marker.schema import BlockTypes
 from marker.schema.blocks import Block, BlockOutput
+from marker.schema.text.span import sanitize_url
 
-HYPHENS = r"-—¬"
+HYPHENS = r"\-\u2010\u2011\u00ad\u2013—¬"
+HYPHEN_REGEX = regex.compile(rf".*[{HYPHENS}]\s*$", regex.DOTALL)
+NEXT_LOWER_REGEX = regex.compile(r"^\s*[\p{Ll}]")
+REMOVE_TAGS_REGEX = re.compile(r"<[^>]+>")
 
 
 def remove_tags(text):
-    return re.sub(r"<[^>]+>", "", text)
+    return REMOVE_TAGS_REGEX.sub("", text)
 
 
 def replace_last(string, old, new):
@@ -23,15 +27,8 @@ def replace_last(string, old, new):
 
 
 def strip_trailing_hyphens(line_text, next_line_text, line_html) -> str:
-    lowercase_letters = r"\p{Ll}"
-
-    hyphen_regex = regex.compile(rf".*[{HYPHENS}]\s?$", regex.DOTALL)
-    next_line_starts_lowercase = regex.match(
-        rf"^\s?[{lowercase_letters}]", next_line_text
-    )
-
-    if hyphen_regex.match(line_text) and next_line_starts_lowercase:
-        line_html = replace_last(line_html, rf"[{HYPHENS}]", "")
+    if HYPHEN_REGEX.match(line_text) and NEXT_LOWER_REGEX.match(next_line_text):
+        line_html = replace_last(line_html, rf"[{HYPHENS}]\s*", "")
 
     return line_html
 
@@ -54,15 +51,17 @@ class Line(Block):
                     block_text = f"<sup>{block_text}</sup>"
 
             if block.url and not skip_urls:
-                block_text = f"<a href='{block.url}'>{block_text}</a>"
+                safe_url = sanitize_url(block.url)
+                if safe_url:
+                    block_text = f"<a href='{safe_url}'>{block_text}</a>"
 
-            if block.italic:
-                text += f"<i>{block_text}</i>"
-            elif block.bold:
-                text += f"<b>{block_text}</b>"
-            elif block.math:
+            if block.math:
                 text += f"<math display='inline'>{block_text}</math>"
             else:
+                if block.italic:
+                    block_text = f"<i>{block_text}</i>"
+                if block.bold:
+                    block_text = f"<b>{block_text}</b>"
                 text += block_text
 
         return text

@@ -47,6 +47,8 @@ class MarginaliaProcessor(BaseProcessor):
 
     def __call__(self, document: Document):
         for page in document.pages:
+            if page.text_extraction_method == "surya":
+                continue
             text_blocks = [
                 b
                 for b in page.structure_blocks(document)
@@ -57,13 +59,12 @@ class MarginaliaProcessor(BaseProcessor):
             if len(text_blocks) < 2:
                 continue  # single-block pages: nothing is "marginal"
 
-            page_top = page.polygon.bbox[1]
             page_height = page.polygon.height or 1
 
             def yfrac(b):
                 return (
-                    (b.polygon.bbox[1] - page_top) / page_height,
-                    (b.polygon.bbox[3] - page_top) / page_height,
+                    b.polygon.bbox[1] / page_height,
+                    b.polygon.bbox[3] / page_height,
                 )
 
             # Body = text blocks not fully inside either margin zone. A

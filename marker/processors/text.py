@@ -8,6 +8,8 @@ from marker.schema import BlockTypes
 from marker.schema.document import Document
 from marker.schema.text.line import Line
 
+HYPHEN_END_REGEX = regex.compile(r".*[\p{Ll}|\d][-—¬]\s?$", regex.DOTALL)
+
 
 class TextProcessor(BaseProcessor):
     """
@@ -88,9 +90,9 @@ class TextProcessor(BaseProcessor):
                     max_x = math.floor(max([line.polygon.x_end for line in lines]))
                     last_line_is_full_width = lines[-1].polygon.x_end >= max_x
 
-                    last_line_is_hyphentated = regex.compile(
-                        r".*[\p{Ll}|\d][-—¬]\s?$", regex.DOTALL
-                    ).match(lines[-1].raw_text(document).strip())
+                    last_line_is_hyphentated = HYPHEN_END_REGEX.match(
+                        lines[-1].raw_text(document).strip()
+                    )
 
                 if (
                     (last_line_is_full_width or last_line_is_hyphentated)

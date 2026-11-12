@@ -5,6 +5,7 @@ import tempfile
 from bs4 import BeautifulSoup
 
 from marker.providers.pdf import PdfProvider
+from marker.providers.utils import safe_weasyprint_url_fetcher, validate_zip_archive
 
 css = """
 @page {
@@ -52,16 +53,25 @@ class EpubProvider(PdfProvider):
 
         # Convert Epub to PDF
         try:
+            validate_zip_archive(filepath)
             self.convert_epub_to_pdf(filepath)
+            super().__init__(self.temp_pdf_path, config)
         except Exception as e:
-            raise RuntimeError(f"Failed to convert {filepath} to PDF: {e}")
+            self._cleanup_temp_pdf()
+            raise RuntimeError(f"Failed to convert {filepath} to PDF: {e}") from e
 
-        # Initialize the PDF provider with the temp pdf path
-        super().__init__(self.temp_pdf_path, config)
+    def _cleanup_temp_pdf(self):
+        if getattr(self, "temp_pdf_path", None) and os.path.exists(self.temp_pdf_path):
+            try:
+                os.remove(self.temp_pdf_path)
+            except OSError:
+                pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._cleanup_temp_pdf()
 
     def __del__(self):
-        if os.path.exists(self.temp_pdf_path):
-            os.remove(self.temp_pdf_path)
+        self._cleanup_temp_pdf()
 
     def convert_epub_to_pdf(self, filepath):
         from weasyprint import CSS, HTML
@@ -104,7 +114,11 @@ class EpubProvider(PdfProvider):
         full_style = "".join([css])  # + styles)
 
         # we convert the epub to HTML
-        HTML(string=html_content, base_url=filepath).write_pdf(
+        HTML(
+            string=html_content,
+            base_url=filepath,
+            url_fetcher=safe_weasyprint_url_fetcher,
+        ).write_pdf(
             self.temp_pdf_path,
             stylesheets=[CSS(string=full_style), self.get_font_css()],
         )

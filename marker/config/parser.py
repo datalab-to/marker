@@ -82,13 +82,37 @@ class ConfigParser:
             help="LLM service to use - should be full import path, like marker.services.gemini.GoogleGeminiService",
         )(fn)
         fn = click.option(
+            "--keep_headers_footers",
+            is_flag=True,
+            default=False,
+            help="Keep running page headers and footers in the output instead of stripping them.",
+        )(fn)
+        fn = click.option(
+            "--keep_server",
+            is_flag=True,
+            default=False,
+            help="Keep the Surya inference server (vLLM/llama.cpp) running after this command exits so later commands reuse it.",
+        )(fn)
+        fn = click.option(
             "--mode",
-            type=click.Choice(["balanced", "fast"]),
+            type=click.Choice(
+                [
+                    "auto",
+                    "no_ocr",
+                    "fast",
+                    "balanced",
+                    "vllm",
+                    "indra",
+                    "surya",
+                    "accurate",
+                ]
+            ),
             default=None,
-            help="Conversion mode. 'balanced' uses the VLM layout model + full-page "
-            "OCR (best on GPU). 'fast' uses lightweight CPU detectors for layout/tables "
-            "and only block-OCRs garbled/empty content. Default by device: balanced on "
-            "GPU, fast on CPU/MPS.",
+            help="Conversion mode. 'no_ocr' disables OCR and uses lightweight models on "
+            "the PDF text layer. 'fast' / 'indra' uses in-process Indra ONNX layout and "
+            "OCR. 'balanced' uses smart routing (pdftext + Indra on clean prose, Surya VLM "
+            "on tables/math/CJK/scanned pages). 'vllm' ('surya'/'accurate') runs full-page "
+            "Surya VLM OCR on every page. 'auto' (default) picks 'balanced' on GPU and 'fast' on CPU/MPS.",
         )(fn)
         return fn
 
@@ -122,6 +146,16 @@ class ConfigParser:
                 case "disable_image_extraction":
                     if v:
                         config["extract_images"] = False
+                case "keep_headers_footers":
+                    if v:
+                        config["keep_pageheader_in_output"] = True
+                        config["keep_pagefooter_in_output"] = True
+                case "keep_server":
+                    if v:
+                        os.environ["SURYA_INFERENCE_KEEP_ALIVE"] = "1"
+                case "mode":
+                    if v and v != "auto":
+                        config["mode"] = v
                 case _:
                     config[k] = v
 
@@ -181,9 +215,20 @@ class ConfigParser:
 
         return PdfConverter
 
-    def get_output_folder(self, filepath: str):
+    def get_output_folder(self, filepath: str, base_in_folder: str | None = None):
         output_dir = self.cli_options.get("output_dir", settings.OUTPUT_DIR)
         fname_base = os.path.splitext(os.path.basename(filepath))[0]
+        if base_in_folder:
+            try:
+                rel_dir = os.path.dirname(
+                    os.path.relpath(
+                        os.path.abspath(filepath), os.path.abspath(base_in_folder)
+                    )
+                )
+                if rel_dir and rel_dir != "." and not rel_dir.startswith(".."):
+                    output_dir = os.path.join(output_dir, rel_dir)
+            except ValueError:
+                pass
         output_dir = os.path.join(output_dir, fname_base)
         os.makedirs(output_dir, exist_ok=True)
         return output_dir

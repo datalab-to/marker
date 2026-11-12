@@ -16,7 +16,9 @@ class PageHeader(Block):
             self.ignore_for_output = False
 
         if self.html and not self.ignore_for_output:
-            return self.html
+            return super().handle_html_output(
+                document, child_blocks, parent_structure, block_config
+            )
 
         return super().assemble_html(
             document, child_blocks, parent_structure, block_config

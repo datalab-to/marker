@@ -9,15 +9,10 @@ class ComplexRegion(Block):
 
     def assemble_html(self, document, child_blocks, parent_structure, block_config):
         if self.html:
-            child_ref_blocks = [
-                block
-                for block in child_blocks
-                if block.id.block_type == BlockTypes.Reference
-            ]
-            html = super().assemble_html(
-                document, child_ref_blocks, parent_structure, block_config
+            self.ignore_for_output = False
+            return super().handle_html_output(
+                document, child_blocks, parent_structure, block_config
             )
-            return html + self.html
         else:
             template = super().assemble_html(
                 document, child_blocks, parent_structure, block_config

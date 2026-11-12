@@ -14,12 +14,16 @@ class OCRConverter(PdfConverter):
     default_processors: Tuple[BaseProcessor, ...] = (EquationProcessor,)
 
     def __init__(self, *args, **kwargs):
+        config = kwargs.get("config")
+        if config is None:
+            config = {}
+        else:
+            config = dict(config)
+        config["force_ocr"] = True
+        kwargs["config"] = config
+        if not kwargs.get("renderer"):
+            kwargs["renderer"] = "marker.renderers.ocr_json.OCRJSONRenderer"
         super().__init__(*args, **kwargs)
-
-        if not self.config:
-            self.config = {}
-
-        self.config["force_ocr"] = True
         self.renderer = OCRJSONRenderer
 
     def build_document(self, filepath: str):
@@ -29,16 +33,12 @@ class OCRConverter(PdfConverter):
         ocr_builder = self.resolve_dependencies(OcrBuilder)
         document_builder = DocumentBuilder(self.config)
 
-        provider = provider_cls(filepath, self.config)
-        document = document_builder(provider, layout_builder, line_builder, ocr_builder)
+        with provider_cls(filepath, self.config) as provider:
+            document = document_builder(
+                provider, layout_builder, line_builder, ocr_builder
+            )
 
         for processor in self.processor_list:
             processor(document)
 
         return document
-
-    def __call__(self, filepath: str):
-        document = self.build_document(filepath)
-        self.page_count = len(document.pages)
-        renderer = self.resolve_dependencies(self.renderer)
-        return renderer(document)

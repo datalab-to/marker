@@ -1,5 +1,6 @@
 import inspect
 import os
+import tempfile
 from importlib import import_module
 from typing import List, Annotated
 import re
@@ -13,11 +14,38 @@ from marker.settings import settings
 
 
 def strings_to_classes(items: List[str]) -> List[type]:
+    from marker.builders import BaseBuilder
+    from marker.converters import BaseConverter
+    from marker.processors import BaseProcessor
+    from marker.providers import BaseProvider
+    from marker.renderers import BaseRenderer
+    from marker.services import BaseService
+
+    allowed_bases = (
+        BaseBuilder,
+        BaseConverter,
+        BaseProcessor,
+        BaseProvider,
+        BaseRenderer,
+        BaseService,
+    )
     classes = []
     for item in items:
+        if "." not in item:
+            raise ValueError(f"Invalid class path '{item}'; expected 'module.ClassName'")
         module_name, class_name = item.rsplit(".", 1)
         module = import_module(module_name)
-        classes.append(getattr(module, class_name))
+        cls = getattr(module, class_name)
+        if not inspect.isclass(cls):
+            raise ValueError(f"Resolved object '{item}' is not a class")
+        if not (
+            module_name.startswith("marker.")
+            or issubclass(cls, allowed_bases)
+        ):
+            raise ValueError(
+                f"Class '{item}' must be a Marker component subclass or reside in 'marker.*'"
+            )
+        classes.append(cls)
     return classes
 
 
@@ -125,15 +153,32 @@ def sort_text_lines(lines: List[PolygonBox], tolerance=1.25):
 
 def download_font():
     if not os.path.exists(settings.FONT_PATH):
-        os.makedirs(os.path.dirname(settings.FONT_PATH), exist_ok=True)
+        font_dir = os.path.dirname(settings.FONT_PATH)
+        os.makedirs(font_dir, exist_ok=True)
         font_dl_path = f"{settings.ARTIFACT_URL}/{settings.FONT_NAME}"
-        with (
-            requests.get(font_dl_path, stream=True) as r,
-            open(settings.FONT_PATH, "wb") as f,
-        ):
-            r.raise_for_status()
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+        fd, tmp_path = tempfile.mkstemp(dir=font_dir, suffix=".tmp")
+        try:
+            with (
+                requests.get(font_dl_path, stream=True, timeout=15) as r,
+                os.fdopen(fd, "wb") as f,
+            ):
+                fd = None
+                r.raise_for_status()
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            os.replace(tmp_path, settings.FONT_PATH)
+        except Exception:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise
 
 
 # Modification of unwrap_math from surya.recognition

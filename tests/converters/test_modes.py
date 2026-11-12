@@ -16,7 +16,7 @@ def _convert(model_dict, temp_pdf, mode, extra=None):
 
 @pytest.mark.filename("adversarial.pdf")
 def test_fast_mode_digital(model_dict, temp_doc):
-    # Clean digital page in fast mode: rf-detr/onnx layout + pdftext, no OCR.
+    # Clean digital page in fast mode: Indra ONNX layout + pdftext, no VLM OCR.
     md: MarkdownOutput = _convert(model_dict, temp_doc, "fast")
     assert "Subspace Adversarial Training" in md.markdown
     # Nothing should have been full-page OCR'd in fast mode

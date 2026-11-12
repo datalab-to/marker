@@ -86,7 +86,14 @@ Output:
             return
 
         # Convert LLM markdown to html
-        corrected_markdown = corrected_markdown.strip().lstrip("```markdown").rstrip("```").strip()
+        corrected_markdown = (
+            corrected_markdown.strip()
+            .removeprefix("```markdown")
+            .removeprefix("```")
+            .removesuffix("```")
+            .strip()
+        )
+        block.ignore_for_output = False
         block.html = markdown2.markdown(corrected_markdown, extras=["tables"])
 
 class ComplexSchema(BaseModel):

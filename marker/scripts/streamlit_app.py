@@ -6,6 +6,7 @@ from marker.scripts.common import (
     img_to_html,
     get_page_image,
     page_count,
+    sanitize_html_for_display,
 )
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -68,7 +69,7 @@ st.markdown("""
 
 This app will let you try marker, a PDF or image -> Markdown, HTML, JSON converter. It works with any language, and extracts images, tables, equations, etc.
 
-Find the project [here](https://github.com/VikParuchuri/marker).
+Find the project [here](https://github.com/datalab-to/marker).
 """)
 
 in_file: UploadedFile = st.sidebar.file_uploader(
@@ -98,11 +99,13 @@ output_format = st.sidebar.selectbox(
 )
 mode = st.sidebar.selectbox(
     "Mode",
-    ["auto", "balanced", "fast"],
+    ["auto", "no_ocr", "fast", "balanced", "vllm"],
     index=0,
     help="'auto' picks by device: balanced on GPU, fast on CPU/MPS. "
-    "'balanced' uses the VLM layout model + full-page OCR (best on GPU). "
-    "'fast' uses lightweight CPU detectors and only OCRs garbled/empty content.",
+    "'no_ocr' uses pure PDF text layer + Indra ONNX layout on CPU. "
+    "'fast' uses in-process Indra ONNX layout and OCR. "
+    "'balanced' uses smart routing (pdftext + Indra on clean prose, Surya VLM on tables/math/CJK/scanned pages). "
+    "'vllm' runs full-page Surya VLM OCR on every page.",
 )
 run_marker = st.sidebar.button("Run Marker")
 
@@ -132,7 +135,8 @@ if not run_marker:
 
 # Run Marker
 with tempfile.TemporaryDirectory() as tmp_dir:
-    temp_pdf = os.path.join(tmp_dir, "temp.pdf")
+    safe_ext = os.path.splitext(os.path.basename(in_file.name or "temp.pdf"))[1] or ".pdf"
+    temp_pdf = os.path.join(tmp_dir, f"temp{safe_ext}")
     with open(temp_pdf, "wb") as f:
         f.write(in_file.getvalue())
 
@@ -161,11 +165,11 @@ text, ext, images = text_from_rendered(rendered)
 with col2:
     if output_format == "markdown":
         text = markdown_insert_images(text, images)
-        st.markdown(text, unsafe_allow_html=True)
+        st.markdown(sanitize_html_for_display(text), unsafe_allow_html=True)
     elif output_format == "json":
         st.json(text)
     elif output_format == "html":
-        st.html(text)
+        st.html(sanitize_html_for_display(text))
     elif output_format == "chunks":
         st.json(text)
 

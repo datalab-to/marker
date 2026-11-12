@@ -42,13 +42,34 @@ Get started with **about 5,000 free convert pages every month** (work email) —
 
 ## Performance
 
-<img src="data/images/olmocr_bench.png" width="800px"/>
+<img src="data/images/omniparsebench.png" width="800px"/>
 
-We measure marker on [olmocr-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench), a third-party benchmark of 1,403 PDFs with tests covering math, tables, multi-column layout, scans, and hard edge cases.  Balanced mode scores **76.0%** overall — **83.5%** on born-digital PDFs — ahead of MinerU and docling and within range of much larger VLMs, while fast mode runs the layout + text-layer path far cheaper (and a no-OCR mode goes faster still).  Scores are the olmocr-bench overall (macro-average across the 8 categories).
+Marker is built around a simple premise: **you shouldn't have to choose between VLM-level accuracy and production throughput, or maintain separate tools for GPU and CPU.**
 
-<img src="data/images/olmocr_digital.png" width="700px"/>
+On [OmniParseBench](https://huggingface.co/datasets/datalab-to/omni_parse_bench) ([GitHub](https://github.com/datalab-to/omni_parse_bench)) — **16,288 pass/fail unit tests across 2,937 pages** in 92 languages covering text & reading order (`8,499` tests), table cell structure (`5,386` tests), and block layout (`2,403` tests) — as well as [olmOCR-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench), Marker defines the Pareto frontier across every hardware tier:
 
-See [below](#benchmarks) for the full per-category scores, the competitive comparison, and instructions on how to run your own benchmarks.
+- **Faster and more accurate than open document pipelines (`MinerU`, `docling`, `PP-StructureV3`)**:
+  - **`Marker balanced`** (**80.5** OmniParseBench, **85.6** on the olmOCR-bench suites, **16.9 pg/s**) beats **`docling`** (`67.5` at `2.1 pg/s`) by **+13.0 points overall** (**+34.8 points on text & math**) at **8× the speed**, and runs **31× faster** than **`MinerU 2.5-Pro`** (`0.54 pg/s`).
+  - **`Marker vllm`** (**85.9** OmniParseBench, **83.7** olmOCR-bench, **4.5 pg/s**) delivers higher text accuracy (`83.8` vs `77.4`) and higher layout accuracy (`95.7` vs `91.7`) than **`MinerU 2.5-Pro`** at **8.3× the throughput** (`4.5` vs `0.54 pg/s`).
+- **Outperforms open VLMs 2–12× its size (`GLM-OCR`, `LightOnOCR-3-4B`, `PaddleOCR-VL-1.6`, `DeepSeek-OCR-2`, `olmOCR-2`)**:
+  - Full-page VLMs burn GPU compute on every single page — even clean born-digital PDFs. Marker's hybrid **`balanced`** mode keeps clean prose on CPU (`pdftext` + in-process [Indra ONNX](https://github.com/datalab-to/indra-ocr) layout) and only calls the GPU VLM on equations, complex tables, CJK/non-Latin scripts, and scans — outscoring **`PaddleOCR-VL-1.6`** (`78.7`) and **`DeepSeek-OCR-2`** (`75.2`, 3.4B) at **14–21× higher throughput**.
+  - When you want full VLM OCR on every page, **`Marker vllm`** (powered by the compact 0.69B [Surya 2.5](https://github.com/datalab-to/surya) VLM) scores **85.9**, beating 1B–8B open VLMs (`LightOnOCR-3-4B` `82.9`, `GLM-OCR` `81.5`, `PaddleOCR-VL-1.6` `78.7`, `DeepSeek-OCR-2` `75.2`, `HunyuanOCR-1.5` `64.6`, `olmOCR-2` `42.6`).
+- **Best-in-class CPU-only parsing (`fast` & `no_ocr`) — no GPU or server required**:
+  - **`Marker fast`** runs 100% in-process on CPU/MPS (~18 MB Indra ONNX weights) and scores **71.0** at **23.6 pg/s** — beating **`docling`** (`67.5`) at **11–17× the speed**, beating 1B GPU VLMs like **`HunyuanOCR-1.5`** (`64.6`), outscoring **`PaddleOCR PP-StructureV3`** (`58.4`) by **+12.6 points at >130× the speed**, and delivering **5× higher accuracy at 2.4× the speed** of **`liteparse`** (`14.0` at `9.7 pg/s`) and **12× higher accuracy at 8× the speed** of **`Tesseract 5`** (`5.9` at `2.9 pg/s`).
+  - **`Marker no_ocr`** runs at **57.0 pg/s** on CPU with zero OCR calls, combining `pdftext` with Indra ONNX layout and CPU table reconstruction to score **81–83%** on born-digital multi-column and document suites (**3.4× higher overall** than `liteparse --no-ocr` at `40.8` vs `12.0`).
+
+### Which mode should I use?
+
+| Mode | Hardware | Throughput | OmniParseBench | Best for |
+|---|---|---:|---:|---|
+| `--mode balanced` *(GPU default)* | GPU + CPU | **16.9 pg/s** | **80.5** *(85.6 olmOCR suites)* | Production mixed workloads (born-digital PDFs, tables, math, CJK, and scans) |
+| `--mode vllm` | GPU | **4.5 pg/s** | **85.9** *(83.7 olmOCR-bench)* | Maximum accuracy on degraded scans, dense equations, handwriting, & complex tables |
+| `--mode fast` *(CPU/MPS default)* | CPU / MPS only | **23.6 pg/s** | **71.0** *(71.6 born-digital)* | Laptops, CI, serverless/CPU containers, and fast local OCR with zero GPU dependencies |
+| `--mode no_ocr` | CPU only | **57.0 pg/s** | **40.8** *(82.7 digital docs)* | Bulk born-digital PDFs when you want layout, reading order, & tables at maximum speed |
+
+<img src="data/images/omniparsebench_scores_bar.png" width="800px"/>
+
+See [below](#benchmarks) for the full OmniParseBench and olmOCR-bench tables, per-suite breakdowns, and instructions on how to run your own benchmarks.
 
 ## Hybrid Mode
 
@@ -101,24 +122,25 @@ Surya auto-spawns the server on first use, and you need `vllm` (NVIDIA GPU) or `
 
 First, some configuration:
 
-- **Mode** (`--mode balanced|fast`; defaults by device — `balanced` on GPU, `fast` on CPU/MPS):
-  - `balanced` (best on a **GPU**) uses the surya VLM for layout, OCRs inline math, and re-OCRs the **whole page** whenever any of its embedded text is bad — highest quality.
-  - `fast` (optimized for **CPU**) uses the lightweight rf-detr layout detector, extracts text with pdftext, and keeps VLM use minimal: equations, surgical block-level repair of individual garbled/empty blocks, and a single full-page pass only for pages that are scanned or mostly bad. A clean digital document without equations never starts the VLM server.
-  - Tables are reconstructed from the PDF text layer in both modes (scanned tables come from the full-page OCR); low-confidence reconstructions fall back to the VLM, with a stricter bar in balanced.
-  - `--disable_ocr` turns off **all** VLM calls (including equations) in either mode — pure text-layer extraction.
-- Marker runs layout, OCR, and table recognition through a single surya VLM, served by a local inference server (used for OCR in both modes, and for layout in balanced mode).  The server is spawned automatically on first use - vLLM (docker) on NVIDIA GPUs, llama.cpp elsewhere.  You can also point marker at an already-running server with `SURYA_INFERENCE_URL=http://host:port/v1`.
+- **Mode** (`--mode no_ocr|fast|balanced|vllm`; defaults by device — `balanced` on GPU, `fast` on CPU/MPS):
+  - `no_ocr` (or `--disable_ocr`) uses the embedded PDF text layer + in-process Indra ONNX layout and reading order on CPU with zero OCR calls (`~24–33 pg/s`).
+  - `fast` (aliased as `indra`; default on **CPU / Apple Silicon MPS**) uses in-process Indra ONNX layout, reading order, and line/page ONNX OCR (`~33 pg/s` on digital PDFs, `~7.4 pg/s` mixed) — no external VLM server required.
+  - `balanced` (default on **GPU**) uses smart routing: `pdftext` + Indra ONNX layout on clean Latin prose pages, and routes equations, inline math, complex tables, CJK/non-Latin scripts, and scanned/garbled pages to the Surya 2.5 VLM.
+  - `vllm` (aliased as `surya` / `accurate`) runs full-page Surya 2.5 VLM OCR on every page, skipping `pdftext` and Indra entirely.
+- In `balanced` and `vllm` modes, Marker runs VLM OCR through a local Surya inference server spawned automatically on first use — vLLM (Docker) on NVIDIA GPUs, llama.cpp elsewhere.  You can also point marker at an already-running server with `SURYA_INFERENCE_URL=http://host:port/v1`.
 - Useful server settings (all surya env vars): `SURYA_INFERENCE_BACKEND` (`vllm` or `llamacpp`), `SURYA_INFERENCE_PARALLEL` (concurrent requests — by default this auto-scales to the server's capacity: the GPU's `max_num_seqs` under vllm, a conservative slot count under llama.cpp; set an int only to override), `SURYA_INFERENCE_KEEP_ALIVE` (keep the server running between invocations), `VLLM_GPUS` (GPU indices for the server).
 - Some PDFs, even digital ones, have bad text in them.  Set `--force_ocr` to force OCR on all pages, or the `strip_existing_ocr` to keep all digital text, and strip out any existing OCR text.
 - Inline math is converted to LaTeX automatically in balanced mode (`ocr_inline_math`); in fast mode, set `--force_ocr` or `--ocr_inline_math` to get the same.
 
-## Interactive App
+## Interactive Viewer App
 
-I've included a streamlit app that lets you interactively try marker with some basic options.  Run it with:
+Marker includes a built-in interactive web viewer (no extra dependencies required) that lets you drop in PDFs, images, or Office documents and inspect layout blocks, reading order, text lines, stage timings, and rendered Markdown, HTML, Chunks, and JSON page by page across all conversion modes (`no_ocr`, `fast`, `balanced`, `vllm`). Run it with:
 
 ```shell
-pip install -U streamlit streamlit-ace
-marker_gui
+marker_gui --port 8000
 ```
+
+Then open `http://localhost:8000` in your browser (pass `--streamlit` if you want the legacy Streamlit UI).
 
 ## Convert a single file
 
@@ -129,7 +151,8 @@ marker_single /path/to/file.pdf
 You can pass in PDFs or images.
 
 Options:
-- `--mode [balanced|fast]`: Conversion mode (see above).  Defaults by device: `balanced` on GPU, `fast` on CPU/MPS.
+- `--mode [auto|no_ocr|fast|balanced|vllm]`: Conversion mode (see above). Defaults by device: `balanced` on GPU, `fast` on CPU/MPS.
+- `--stdout`: Write the converted Markdown/JSON/HTML/Chunks directly to stdout instead of saving to a directory (ideal for shell pipelines and AI agents).
 - `--disable_ocr`: Never call the VLM - pure text-layer extraction (equations and scanned pages are skipped).
 - `--page_range TEXT`: Specify which pages to process. Accepts comma-separated page numbers and ranges. Example: `--page_range "0,5-10,20"` will process pages 0, 5 through 10, and page 20.
 - `--output_format [markdown|json|html|chunks]`: Specify the format for the output results.
@@ -141,7 +164,9 @@ Options:
 - `--strip_existing_ocr`: Remove all existing OCR text in the document and re-OCR with surya.
 - `--redo_inline_math`: If you want the absolute highest quality inline math conversion, use this along with `--use_llm`.
 - `--disable_image_extraction`: Don't extract images from the PDF.  If you also specify `--use_llm`, then images will be replaced with a description.
-- `--keep_pageheader_in_output` / `--keep_pagefooter_in_output`: Keep running page headers / footers in the output instead of stripping them (they are removed by default).
+- `--keep_headers_footers` (or `--keep_pageheader_in_output` / `--keep_pagefooter_in_output`): Keep running page headers / footers in the output instead of stripping them (they are removed by default).
+- `--keep_server`: Keep the Surya inference server (vLLM / llama.cpp) running after this command exits so subsequent CLI commands reuse it.
+- `--skill` / `--install_skill PATH`: Print the Marker AI coding agent skill (`SKILL.md`) to stdout or install it into a skills directory (e.g. `marker_single --install_skill .agents/skills`).
 - `--debug`: Enable debug mode for additional logging and diagnostic information.
 - `--processors TEXT`: Override the default processors by providing their full module paths, separated by commas. Example: `--processors "module1.processor1,module2.processor2"`
 - `--config_json PATH`: Path to a JSON configuration file containing additional settings.
@@ -410,34 +435,35 @@ To customize processing behavior, override the `processors`.  To add new output 
 
 Processors and renderers can be directly passed into the base `PDFConverter`, so you can specify your own custom processing easily.
 
-## API server
+## API server & Viewer
 
-There is a very simple API server you can run like this:
+You can run the Marker FastAPI server and interactive viewer like this:
 
 ```shell
 pip install -U uvicorn fastapi python-multipart
 marker_server --port 8001
 ```
 
-This will start a fastapi server that you can access at `localhost:8001` (use `--host` to change the bind address).  You can go to `localhost:8001/docs` to see the endpoint options.
+This starts a server at `http://localhost:8001` (use `--host` to change the bind address):
+- Visit `http://localhost:8001/` in your browser for the interactive **Marker Viewer**.
+- Visit `http://localhost:8001/docs` for the OpenAPI / Swagger documentation.
 
-You can send requests like this:
+You can send programmatic conversion requests to `/marker` or `/marker/upload`:
 
-```
+```python
 import requests
 import json
 
 post_data = {
     'filepath': 'FILEPATH',
-    # Accepted params: page_range, mode, force_ocr, paginate_output, output_format
+    # Accepted params: page_range, mode, force_ocr, disable_ocr, use_llm,
+    # strip_existing_ocr, keep_headers_footers, paginate_output, output_format
 }
 
 requests.post("http://localhost:8001/marker", data=json.dumps(post_data)).json()
 ```
 
-The server accepts only the params listed above (`page_range`, `mode`, `force_ocr`, `paginate_output`, `output_format`).  The `--use_llm` hybrid path and `--disable_ocr` are not exposed over the API — use the CLI or the Python API for those, or the hosted [Datalab API](https://www.datalab.to/plans?utm_source=gh-marker).
-
-Note that this is not a very robust API, and is only intended for small-scale use.  If you want to use this server, but want a more robust conversion option, you can use the hosted [Datalab API](https://www.datalab.to/plans?utm_source=gh-marker).
+Note that this server is intended for local inspection and small-scale use. If you want a production-grade conversion API with high concurrency, try the hosted [Datalab API](https://www.datalab.to/plans?utm_source=gh-marker).
 
 # Troubleshooting
 
@@ -455,107 +481,170 @@ Pass the `debug` option to activate debug mode.  This will save images of each p
 
 # Benchmarks
 
-## Overall PDF Conversion
+## OmniParseBench
 
-We measure conversion quality with [olmocr-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench): 1,403 PDFs with ~8,400 pass/fail unit tests covering math rendering, table structure, reading order, headers/footers, and old scans.  The overall score is the **macro-average across the 8 categories** (matching how olmocr-bench and Chandra report), using the official olmocr-bench checker.
+We evaluate end-to-end document parsing with [OmniParseBench](https://huggingface.co/datasets/datalab-to/omni_parse_bench) ([GitHub](https://github.com/datalab-to/omni_parse_bench)): **16,288 pass/fail unit tests across 2,937 pages** from 2,343 documents over 22 suites and 92 languages. Tests are organized into three families:
+- **Text** (`8,499` tests): text presence (`7,275`), reading order (`1,189`), and repetition avoidance (`35`), including inline and display math.
+- **Tables** (`5,386` tests): table cell content and `colspan` / `rowspan` structural relationships.
+- **Layout** (`2,403` tests): block-level layout classification (headings, lists, tables, captions, footnotes, forms).
+
+The **Headline** score is the macro-average of the **Text**, **Tables**, and **Layout** family pass rates.
 
 ### Competitive comparison
 
-Quality vs. throughput on the full bench — up (higher score) and right (faster) is better.  Marker (this repo) beats **both** MinerU and docling on score *and* throughput at once: balanced matches Gemini/MinerU quality while running ~5× more pages/sec than MinerU, and fast trades a little quality for a big speedup.
+Quality vs. throughput on OmniParseBench — up (higher score) and right (faster) is better:
 
-<img src="data/images/olmocr_bench.png" width="800px"/>
+<img src="data/images/omniparsebench.png" width="800px"/>
 
-| System | Overall | Digital-only | Throughput\* |
-|---|---:|---:|---:|
-| [Chandra 2](https://github.com/datalab-to/chandra) (hosted) | 85.8 | — | — |
-| Gemini Flash 3.5 (API) | 76.4 | 79.1 | — |
-| **Marker — balanced** (GPU) | **76.0** | **83.5** | **2.9 pg/s** |
-| MinerU — pipeline (GPU) | 72.7 | 83.3 | 0.54 pg/s |
-| **Marker — fast** (GPU) | **66.6** | **71.6** | **7.4 pg/s** |
-| docling (GPU) | 50.3 | 64.0 | 2.1 pg/s |
-| **Marker — fast, no OCR** (CPU) | **43.6** | **55.8** | **23.7 pg/s** |
-| liteparse (CPU) | 22.4 | 27.3 | 8.9 pg/s |
-| liteparse, no OCR (CPU) | 20.4 | 25.0 | 1721 pg/s |
+Representative scores from the [OmniParseBench leaderboard](https://huggingface.co/datasets/datalab-to/omni_parse_bench) and our benchmark harness alongside Marker's four conversion modes:
 
-Chandra 2 is our hosted model (numbers from the [Chandra repo](https://github.com/datalab-to/chandra)); Gemini Flash 3.5 is via API; MinerU / docling / liteparse are OSS pipelines.  Digital-only = macro-average over the 6 non-scanned categories (a subset most text-layer tools score higher on).
+| System | Type / Weights | Headline | Text | Tables | Layout | Throughput\* |
+|---|---|---:|---:|---:|---:|---:|
+| [Datalab API (accurate)](https://www.datalab.to/?utm_source=gh-marker) | Hosted API | 94.1 | 92.0 | 94.2 | 96.0 | — |
+| [Datalab API (balanced)](https://www.datalab.to/?utm_source=gh-marker) | Hosted API | 92.6 | 90.1 | 91.6 | 96.2 | — |
+| Reducto | Hosted API | 90.8 | 85.4 | 91.2 | 95.8 | — |
+| LlamaParse | Hosted API | 90.4 | 88.2 | 92.6 | 90.4 | — |
+| [Chandra OCR 2](https://github.com/datalab-to/chandra) | Open VLM (4.5B, GPU) | 90.1 | 87.4 | 87.4 | 95.4 | — |
+| Mistral OCR | Hosted API | 89.5 | 82.8 | 91.9 | 93.8 | — |
+| dots.mocr | Open VLM (3.0B, GPU) | 87.9 | 82.5 | 88.6 | 92.5 | — |
+| MinerU 2.5-Pro | Open VLM (1.2B, GPU) | 87.1 | 77.4 | 92.1 | 91.7 | 0.54 pg/s |
+| **Marker — `vllm` ([Surya 2.5](https://github.com/datalab-to/surya))** | **Open VLM (0.69B, GPU)** | **85.9** | **83.8** | **78.3** | **95.7** | **4.5 pg/s** |
+| Surya OCR 2 | Open VLM (0.67B, GPU) | 83.1 | 80.6 | 74.3 | 94.3 | 2.2 pg/s |
+| Azure Document Intelligence | Hosted API | 83.0 | 74.6 | 81.7 | 92.8 | — |
+| LightOnOCR-3-4B | Open VLM (4.5B, GPU) | 82.9 | 83.9 | 70.8 | 94.0 | — |
+| GLM-OCR | Open VLM (1.3B, GPU) | 81.5 | 71.0 | 84.2 | 89.3 | — |
+| **Marker — `balanced`** | **Open Hybrid (GPU + CPU)** | **80.5** | **79.2** | **70.1** | **92.2** | **16.9 pg/s** |
+| Nemotron 3.5 Parse | Open VLM (0.63B, GPU) | 80.0 | 72.4 | 77.3 | 90.2 | — |
+| PaddleOCR-VL-1.6 | Open VLM (0.96B, GPU) | 78.7 | 61.7 | 83.7 | 90.7 | ~1.2 pg/s |
+| DeepSeek-OCR-2 | Open VLM (3.4B, GPU) | 75.2 | 64.2 | 70.0 | 91.4 | ~0.8 pg/s |
+| **Marker — `fast`** | **Open ONNX (CPU, no GPU)** | **71.0** | **62.3** | **59.6** | **91.2** | **23.6 pg/s** |
+| [Indra OCR](https://github.com/datalab-to/indra-ocr) (standalone) | Open ONNX (12M, CPU) | 69.5 | 60.3 | 58.1 | 90.1 | 49.4 pg/s |
+| docling | Open Pipeline (GPU / CPU) | 67.5 | 44.4 | 72.0 | 85.9 | 2.1 pg/s |
+| HunyuanOCR-1.5 | Open VLM (1.0B, GPU) | 64.6 | 50.5 | 61.9 | 81.4 | — |
+| PaddleOCR PP-StructureV3 | Open Pipeline (CPU) | 58.4 | 55.6 | 47.8 | 71.7 | ≤ 0.18 pg/s |
+| **Marker — `no_ocr`** | **Open Text-layer + ONNX (CPU)** | **40.8** | **22.7** | **22.0** | **77.8** | **57.0 pg/s** |
+| olmOCR-2 | Open VLM (8.3B, no layout) | 42.6\*\* | 71.3 | 56.6 | 0.0 | — |
+| Nanonets-OCR2-3B | Open VLM (3.8B, no layout) | 43.6\*\* | 68.2 | 62.6 | 0.0 | — |
+| liteparse | Open Parser (CPU, no layout/tables) | 14.0 | 42.0 | 0.0 | 0.0 | 9.7 pg/s |
+| liteparse (`--no-ocr`) | Open Text-layer (CPU, no layout/tables) | 12.0 | 36.1 | 0.0 | 0.0 | 318.0 pg/s |
+| Tesseract 5 | Open OCR (CPU, no layout/tables) | 5.9 | 17.6 | 0.0 | 0.0 | 2.9 pg/s |
 
-\* Throughput is sustained **concurrent** pages/sec on one B200 host — the deployment-relevant number, not single-stream latency.  Each system runs on the GPU at its native parallelism (marker balanced/fast, MinerU, docling), except marker fast-no-OCR and liteparse which are CPU-only by design.  Chandra (hosted) and Gemini (API) have no local-hardware throughput.  Marker's design — thin CPU workers sharing one inference server (see [Throughput](#throughput)) — is what lets a GPU mode like balanced sustain ~2.9 pg/s rather than its ~0.3 pg/s single-stream rate.
+\* Throughput is sustained concurrent pages/sec on a single host (`Marker balanced` / `vllm`, `MinerU`, and `docling` on one GPU; `Marker fast` / `no_ocr`, `Indra OCR`, `PP-StructureV3`, `liteparse`, and `Tesseract 5` on CPU with no GPU).  
+\*\* Systems that emit only Markdown without block layout annotations or HTML tables score `0.0` on those test families.
 
-The table compares **pipeline systems** — marker (which reads the PDF text layer and OCRs selectively) against MinerU's **pipeline** backend and docling (also text-layer + selective OCR).  This is the apples-to-apples comparison, and marker balanced leads it on both score and throughput.  (docling runs its default pipeline: text layer for born-digital, OCR for image regions; MinerU's own VLM backend scores higher but is a different, full-page-VLM approach.)
+Ranked headline scores and concurrent throughput across systems:
 
-If your documents need **full-page VLM OCR** — math-heavy pages, scans, the highest possible accuracy — that's a different tool than a text-layer pipeline.  Reach for [Chandra](https://github.com/datalab-to/chandra) (our document VLM, 85.8 here) or [surya](https://github.com/datalab-to/surya) (the OCR VLM marker uses under the hood); both have their own olmocr-bench numbers in their repos.
+<img src="data/images/omniparsebench_scores_bar.png" width="49%"/> <img src="data/images/omniparsebench_throughput_bar.png" width="49%"/>
 
-The same numbers as ranked bar charts (score across all systems; throughput for the local ones on a log scale):
+Per-family breakdown (**Text**, **Tables**, **Layout**) across representative models:
 
-<img src="data/images/olmocr_scores_bar.png" width="49%"/> <img src="data/images/olmocr_throughput_bar.png" width="49%"/>
+<img src="data/images/omniparsebench_families.png" width="800px"/>
 
-### Born-digital, CPU-only
+### Marker modes vs. `docling`, per OmniParseBench suite
 
-If you only have born-digital PDFs and no GPU, the relevant comparison is pure-CPU text extractors.  Marker's `fast --disable_ocr` runs its 20M layout model on CPU and still reads structure (columns, tables, headers), so it scores far higher than a plain text dump — while liteparse (no layout model) is faster but collapses on anything non-linear.
+| Suite | Tests | `balanced` (GPU) | `fast` (CPU ONNX) | `no_ocr` (CPU) | `docling` |
+|---|---:|---:|---:|---:|---:|
+| `olmo_arxiv_math` | 3,272 | **90.8** | 77.8 | 49.1 | 59.0 |
+| `olmo_table_tests` | 718 | **88.4** | 80.3 | 56.4 | 88.1 |
+| `olmo_multi_column` | 352 | **88.2** | 86.0 | 81.4 | 83.9 |
+| `olmo_old_scans_math` | 450 | **85.5** | 54.3 | 48.7 | 4.8 |
+| `olmo_long_tiny_text` | 237 | 78.4 | **82.8** | 58.6 | 61.6 |
+| `olmo_old_scans` | 395 | **70.5** | 52.3 | 42.1 | 31.3 |
+| `tables_derived` | 5,427 | **80.9** | 80.1 | 63.3 | **88.4** |
+| `synth_copies` | 1,881 | **85.3** | 75.4 | 46.1 | 73.1 |
+| `multiling_finepdfs` | 676 | 80.2 | **87.4** | 59.2 | 63.2 |
+| `realdoc_pages` | 445 | **77.1** | 76.6 | 20.2 | 71.6 |
+| `realdoc_pdfs` | 256 | **82.4** | 77.7 | 28.6 | 52.8 |
+| `rotation_skew` | 377 | **84.3** | 83.7 | 34.0 | 81.1 |
+| `tiny_plans` | 372 | 83.9 | 77.2 | 45.3 | **91.2** |
+| `handwriting_samples` | 324 | **66.1** | 49.9 | 50.0 | 50.0 |
+| `docparsing_images` | 299 | 86.3 | 77.5 | 27.4 | **87.0** |
+| `parsebench_docs` | 293 | 85.4 | **89.5** | 82.7 | 86.9 |
+| `forms_federal` | 127 | 74.1 | 58.6 | 16.3 | **75.0** |
+| `forms_filled` | 107 | 75.9 | 80.5 | 48.0 | **81.3** |
+| `forms_documentcloud` | 47 | 90.3 | 85.0 | **97.4** | 100.0 |
+| **OmniParseBench Headline** | **16,288** | **80.5** | **71.0** | **40.8** | **67.5** |
+| **olmOCR-bench suites (6-suite mean)** | **5,424** | **85.6** | **70.8** | **44.0** | **54.8** |
+| **Sustained Throughput** | — | **16.9 pg/s** | **23.6 pg/s** | **57.0 pg/s** | **2.1 pg/s** |
+
+### CPU-only parsing
+
+If you have no GPU, Marker's `fast` (`23.6 pg/s`, `71.0` headline) and `no_ocr` (`57.0 pg/s`, `40.8` headline) modes run entirely in-process on CPU using Indra ONNX layout, reading order, and line/math OCR:
+- **`Marker fast` vs. `docling` & `PP-StructureV3` on CPU**: Scores **+3.5 points higher** than `docling` (`71.0` vs `67.5`) at **17× the CPU speed** (`23.6` vs `1.4 pg/s`), and **+12.6 points higher** than `PaddleOCR PP-StructureV3` (`58.4`) at **>130× the speed** (`23.6` vs `≤ 0.18 pg/s`).
+- **`Marker fast` & `no_ocr` vs. `liteparse` & `Tesseract 5`**: Plain text extractors (`liteparse` `14.0`, `liteparse --no-ocr` `12.0`, `Tesseract 5` `5.9`) lose all document structure — multi-column reading order gets scrambled, tables collapse into unstructured text (`0%` on table tests), and headings/footnotes disappear (`0%` on layout tests). Marker preserves multi-column reading order (`91.2%` layout in `fast`, `77.8%` in `no_ocr`) and reconstructs full HTML tables (`59.6%` in `fast`, `63.3%` on `tables_derived` in `no_ocr`).
 
 <img src="data/images/olmocr_digital.png" width="800px"/>
 
-### Marker modes, per category
+## olmOCR-bench
 
-| Category | balanced | fast | no OCR |
-|----------------------|----------|------|--------|
-| arXiv math           | 83.9     | 23.4 | 0.0    |
-| Tables               | 73.4     | 69.0 | 46.1   |
-| Multi column         | 76.6     | 76.0 | 67.0   |
-| Headers & footers    | 95.9     | 93.2 | 92.8   |
-| Long tiny text       | 71.3     | 68.3 | 43.2   |
-| Old scans math       | 63.8     | 59.8 | 0.0    |
-| Old scans            | 43.2     | 43.2 | 14.3   |
-| Baseline             | 99.7     | 99.9 | 85.9   |
-| **Overall**          | **76.0** | **66.6** | **43.6** |
-| **Overall (born-digital only)** | **83.5** | **71.6** | **55.8** |
+We also evaluate on the standalone [olmOCR-bench](https://github.com/allenai/olmocr/tree/main/olmocr/bench) harness (1,403 PDFs across 8 categories, scored with the official olmOCR-bench checker):
 
-Notes:
+<img src="data/images/olmocr_scores_bar.png" width="800px"/>
 
-- Born-digital-only excludes the two scanned splits (old scans, old scans math).
-- Fast mode's math is lower by design: it reads equations from the PDF text layer rather than VLM-OCRing them, so LaTeX-level math tests (arXiv math) mostly miss.  Use balanced for math-heavy documents.
-- `--disable_ocr` (no OCR) never calls the VLM: math scores zero (equations have no text-layer LaTeX), and the raw text layer's garbled math glyphs also cost some baseline points.  It's the pure CPU text-layer path.
+| System | Overall (8 splits) | Born-digital (6 splits) | Throughput |
+|---|---:|---:|---:|
+| [Chandra 2](https://github.com/datalab-to/chandra) (hosted) | 85.8 | — | — |
+| **Marker — `vllm`** (GPU) | **83.7** | **89.5** | **4.5 pg/s** |
+| Gemini Flash 3.5 (API) | 76.4 | 79.1 | — |
+| **Marker — `balanced`** (GPU) | **76.0** | **83.5** | **2.9–16.9 pg/s** |
+| MinerU — pipeline (GPU) | 72.7 | 83.3 | 0.54 pg/s |
+| **Marker — `fast`** (CPU / ONNX) | **66.6** | **71.6** | **7.4–23.6 pg/s** |
+| docling (GPU) | 50.3 | 64.0 | 2.1 pg/s |
+| **Marker — `no_ocr`** (CPU) | **43.6** | **55.8** | **23.7–57.0 pg/s** |
+| liteparse (CPU) | 22.4 | 27.3 | 8.9 pg/s |
+| liteparse, no OCR (CPU) | 20.4 | 25.0 | 1721 pg/s |
+
+Per-category breakdown on the standalone 8-split olmOCR-bench:
+
+| Category | `vllm` | `balanced` | `fast` | `no_ocr` |
+|---|---:|---:|---:|---:|
+| arXiv math | 87.0 | 83.9 | 23.4 | 0.0 |
+| Tables | 90.9 | 73.4 | 69.0 | 46.1 |
+| Multi column | 83.3 | 76.6 | 76.0 | 67.0 |
+| Headers & footers | 90.9 | 95.9 | 93.2 | 92.8 |
+| Long tiny text | 94.8 | 71.3 | 68.3 | 43.2 |
+| Old scans math | 78.6 | 63.8 | 59.8 | 0.0 |
+| Old scans | 44.3 | 43.2 | 43.2 | 14.3 |
+| Baseline | 99.9 | 99.7 | 99.9 | 85.9 |
+| **Overall** | **83.7** | **76.0** | **66.6** | **43.6** |
+| **Overall (born-digital only)** | **89.5** | **83.5** | **71.6** | **55.8** |
 
 ## Throughput
 
 <img src="data/images/marker_throughput.png" width="800px"/>
 
-Production throughput comes from **concurrency**, not per-page latency.  Marker runs many thin conversion workers that hold only small CPU models (layout, OCR-error) and share a single inference server; the parent process budgets VLM concurrency across them, so throughput scales with server capacity rather than per-process VRAM.
+Production throughput comes from **concurrency**, not single-stream latency. Marker runs thin conversion workers that hold small CPU models (Indra ONNX layout/OCR, OCR-error detection) and share a single inference server in `balanced` / `vllm` modes; the parent process budgets VLM concurrency across them, so throughput scales with server capacity rather than per-process VRAM.
 
-Sustained steady-state over the 1,403-page olmocr-bench set on **one B200**:
+Sustained concurrent throughput across OmniParseBench (2,937 pages) and olmOCR-bench (1,403 pages):
 
-| Mode | Throughput | Effective latency/page |
-|---|---:|---:|
-| fast, no OCR | **23.7 pg/s** | 42 ms |
-| fast | **7.4 pg/s** | 134 ms |
-| balanced | **2.9 pg/s** | 341 ms |
+| Mode | OmniParseBench Throughput | olmOCR-bench Throughput | Hardware |
+|---|---:|---:|---|
+| `no_ocr` | **57.0 pg/s** | **23.7–33 pg/s** | CPU only (pdftext + Indra ONNX layout) |
+| `fast` | **23.6 pg/s** | **7.4–33 pg/s** | CPU only (Indra ONNX layout + ONNX OCR) |
+| `balanced` | **16.9 pg/s** | **2.9–16.9 pg/s** | Hybrid (CPU Indra ONNX + GPU Surya 2.5 VLM) |
+| `vllm` | **4.5 pg/s** | **4.5 pg/s** | GPU (full-page Surya 2.5 VLM) |
 
-`fast, no OCR` is pure CPU (pdftext + a 20M layout model, no VLM) and is CPU-bound — it needs no GPU at all.  `fast` and `balanced` are GPU-assisted and still leave the GPU with headroom on a single B200 (balanced saturates only ~30% of it — the ceiling is the VLM's decode throughput, so throughput scales further with more/larger inference-server replicas).  Measure it on your own hardware with `benchmarks/inference.py` (see [benchmarks/README.md](benchmarks/README.md)); it reports sustained pages/sec at your chosen concurrency.
+`no_ocr` and `fast` run in-process on CPU (pdftext + Indra ONNX layout and OCR, no VLM server) and need no GPU at all. `balanced` routes clean digital prose on CPU and sends only equations, complex tables, non-Latin scripts, and scanned pages to the GPU Surya 2.5 VLM server.
 
 ## Table Conversion
 
-Marker can extract tables from PDFs using `marker.converters.table.TableConverter`.  Table quality is included in the olmocr-bench scores above (the `Tables` row).  Digital tables are reconstructed from the PDF text layer on CPU; scanned tables and low-confidence reconstructions fall back to the VLM.  The `--use_llm` flag can improve difficult tables further (multi-page merges, complex spans).
+Marker can extract tables from PDFs using `marker.converters.table.TableConverter`. Table quality is measured directly in OmniParseBench (`5,386` table tests across `olmo_table_tests` and `tables_derived`) and olmOCR-bench. Digital tables are reconstructed from the PDF text layer on CPU; scanned tables and low-confidence reconstructions fall back to the VLM in `balanced` / `vllm` modes. The `--use_llm` flag can improve difficult tables further (multi-page merges, complex spans).
 
 ## Running your own benchmarks
 
-Everything above — the olmocr-bench scores and the throughput numbers, for both marker and the competitors — is reproducible with the harness in [`benchmarks/`](benchmarks/).  In short:
-
-1. Clone [olmocr-bench](https://github.com/allenai/olmocr) and download its bench data (we don't vendor it).
-2. Run `benchmarks/inference.py` to convert the bench PDFs with marker at real worker concurrency — it writes scoreable per-page markdown *and* prints sustained pages/sec.
-3. Score the output with olmocr-bench's own checker, then run `benchmarks/summarize.py` to get the Overall (macro-average) and Digital-only numbers.
-
-Competitor runners (liteparse, docling, MinerU), each using the tool's native parallelism, live in `benchmarks/competitors/`.  See [benchmarks/README.md](benchmarks/README.md) for the full step-by-step.
+Everything above is reproducible:
+- **OmniParseBench**: Install [`omni-parse-bench`](https://github.com/datalab-to/omni_parse_bench) (`pip install "omni-parse-bench[benchmark]"`), convert the dataset pages with Marker (`--mode no_ocr|fast|balanced|vllm`), and score with the official `omni_parse_bench` scorer.
+- **olmOCR-bench & Throughput**: Use `benchmarks/inference.py` and `benchmarks/summarize.py` ( plus `benchmarks/plot_benchmarks.py` to regenerate all charts in `data/images/`). See [benchmarks/README.md](benchmarks/README.md) for the full step-by-step instructions.
 
 # How it works
 
-Marker is a pipeline built around the [surya](https://github.com/datalab-to/surya) VLM, served by a local inference server, plus small CPU models:
+Marker is a hybrid pipeline combining in-process [indra-ocr](https://pypi.org/project/indra-ocr/) ONNX models and the [surya](https://github.com/datalab-to/surya) VLM:
 
-- Extract embedded text with pdftext, in the PDF's reading order
-- Detect page layout (a lightweight rf-detr detector in fast mode, the VLM in balanced mode)
-- Decide per page whether the embedded text is usable; garbled or scanned pages are OCR'd by the VLM (full-page in balanced, surgically per-block in fast)
-- Equations and inline math are recognized by the VLM (pdftext cannot represent math)
-- Tables are reconstructed from the text layer with CPU heuristics; low-confidence reconstructions fall back to the VLM
-- Optionally use an LLM to improve quality further
+- Extract embedded text with `pdftext` and verify text-layer integrity and script coverage
+- Detect page layout and reading order (in-process Indra ONNX `OrderNet` + detector on clean digital pages; Surya VLM on scanned/complex pages)
+- Route pages and blocks by mode: `no_ocr` keeps the text layer, `fast` repairs garbled/scanned regions with in-process Indra ONNX OCR, `balanced` routes tables, math, non-Latin scripts, and scanned pages to Surya VLM, and `vllm` runs full-page Surya VLM on every page
+- Reconstruct digital tables from the text layer with CPU heuristics + OrderNet table heads; low-confidence tables fall back to Surya VLM in `balanced` mode
+- Optionally use an LLM (`--use_llm`) to improve quality further
 - Combine blocks and postprocess complete text
 
 It only calls the VLM where necessary, which improves speed while keeping accuracy.
@@ -574,4 +663,4 @@ Note: Passing the `--use_llm` and `--force_ocr` flags will mostly solve these is
 You can always run `marker` locally, but if you wanted to expose it as an API, we have a few options:
 - Our platform API, which uses Chandra and other models and is easy to test out - it's free to sign up, and you get about 5,000 free convert pages every month with a work email, [try it out here](https://www.datalab.to/?utm_source=gh-marker)
 - Our painless on-prem solution for commercial use, which you can [ask us about here](https://www.datalab.to/contact?utm_source=gh-marker-onprem) and gives you privacy guarantees with high throughput inference optimizations.
-- [Deployment example with Modal](./examples/README_MODAL.md) that shows you how to deploy and access `marker` through a web endpoint using [`Modal`](https://modal.com). Modal is an AI compute platform that enables developers to deploy and scale models on GPUs in minutes.
+- [Deployment example with Modal](./examples/marker_modal_deployment.py) that shows you how to deploy and access `marker` through a web endpoint using [`Modal`](https://modal.com). Modal is an AI compute platform that enables developers to deploy and scale models on GPUs in minutes.
