@@ -366,15 +366,15 @@ class ViewerEngine:
                 page_json_model = json_renderer.extract_json(
                     document, doc_output.children[0]
                 )
-                page_json_dict = page_json_model.model_dump()
+                page_json_dict = page_json_model.model_dump(mode="json")
                 raw_chunks = json_to_chunks(
                     page_json_model,
                     set(str(b) for b in chunk_renderer.image_blocks),
                 )
                 if isinstance(raw_chunks, list):
-                    page_chunks_list = [c.model_dump() for c in raw_chunks]
+                    page_chunks_list = [c.model_dump(mode="json") for c in raw_chunks]
                 elif raw_chunks is not None:
-                    page_chunks_list = [raw_chunks.model_dump()]
+                    page_chunks_list = [raw_chunks.model_dump(mode="json")]
 
             # Prepare display image (downscaled to MAX_SIDE if needed)
             orig_w, orig_h = display_img.size

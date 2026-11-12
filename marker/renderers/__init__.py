@@ -143,7 +143,7 @@ class BaseRenderer:
                 return match.group(0)
             block_id: BlockId = child.id
             if block_id.block_type in self.image_blocks and self.extract_images:
-                images[block_id] = self.extract_image(
+                images[str(block_id)] = self.extract_image(
                     document, block_id, to_base64=True
                 )
                 return match.group(0)
@@ -154,7 +154,7 @@ class BaseRenderer:
         html = CONTENT_REF_RE.sub(repl, block_output.html)
 
         if block_output.id.block_type in self.image_blocks and self.extract_images:
-            images[block_output.id] = self.extract_image(
+            images[str(block_output.id)] = self.extract_image(
                 document, block_output.id, to_base64=True
             )
 

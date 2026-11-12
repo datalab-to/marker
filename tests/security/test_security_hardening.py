@@ -243,3 +243,35 @@ def test_viewer_endpoints_and_ui():
     assert pdf_p["page"] == 1
     assert pdf_p["mode_used"] == "fast"
     assert "timings" in pdf_p
+
+
+def test_json_renderer_model_dump_with_extracted_images(monkeypatch):
+    from marker.renderers.chunk import json_to_chunks
+    from marker.renderers.json import JSONRenderer
+    from marker.schema import BlockTypes
+    from marker.schema.blocks.base import BlockId, BlockOutput
+    from marker.schema.polygon import PolygonBox
+
+    renderer = JSONRenderer()
+    monkeypatch.setattr(renderer, "extract_image", lambda doc, bid, to_base64=False: "dGVzdA==")
+    pic_id = BlockId(page_id=0, block_id=1, block_type=BlockTypes.Picture)
+    page_id = BlockId(page_id=0, block_type=BlockTypes.Page)
+    pic_out = BlockOutput(
+        html="",
+        polygon=PolygonBox.from_bbox([0, 0, 100, 100]),
+        id=pic_id,
+        children=[],
+        section_hierarchy={},
+    )
+    page_out = BlockOutput(
+        html=f"<content-ref src='{pic_id}'></content-ref>",
+        polygon=PolygonBox.from_bbox([0, 0, 200, 200]),
+        id=page_id,
+        children=[pic_out],
+        section_hierarchy={},
+    )
+    json_model = renderer.extract_json(None, page_out)
+    dumped = json_model.model_dump()
+    assert dumped["children"][0]["images"] == {str(pic_id): "dGVzdA=="}
+    chunks = json_to_chunks(json_model, {"Picture", "Figure", "Diagram"})
+    assert [c.model_dump() for c in chunks][0]["images"] == {str(pic_id): "dGVzdA=="}
