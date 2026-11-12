@@ -110,6 +110,7 @@ class PdfConverter(BaseConverter):
         ReferenceProcessor,
         BlankPageProcessor,
         DebugProcessor,
+        DocumentTOCProcessor,
     )
     default_llm_service: BaseService = GoogleGeminiService
 
