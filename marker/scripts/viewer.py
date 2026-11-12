@@ -162,7 +162,8 @@ class ViewerEngine:
             "max_pages": 20,
         }
         self.tmp = tempfile.TemporaryDirectory(prefix="marker_viewer_")
-        self.lock = threading.Lock()
+        self.docs_lock = threading.Lock()
+        self.model_lock = threading.Lock()
         self.docs: Dict[str, Dict[str, Any]] = {}
 
     def get_models(self) -> Dict[str, Any]:
@@ -171,7 +172,9 @@ class ViewerEngine:
             if models is not None:
                 return models
         if self._models is None:
-            self._models = create_model_dict()
+            with self.model_lock:
+                if self._models is None:
+                    self._models = create_model_dict()
         return self._models
 
     def info(self, has_api_docs: bool = True) -> Dict[str, Any]:
@@ -226,7 +229,7 @@ class ViewerEngine:
                 pass
             raise ValueError(f"Could not read document: {exc}") from exc
 
-        with self.lock:
+        with self.docs_lock:
             self.docs[did] = {
                 "id": did,
                 "path": filepath,
@@ -234,7 +237,7 @@ class ViewerEngine:
                 "ext": ext,
                 "pages": max(1, num_pages),
             }
-            while len(self.docs) > 8:
+            while len(self.docs) > 24:
                 old_id = next(iter(self.docs))
                 old_info = self.docs.pop(old_id, None)
                 if old_info and os.path.exists(old_info["path"]):
@@ -251,9 +254,10 @@ class ViewerEngine:
 
     def page(self, did: str, n: int, opts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         opts = opts or {}
-        if did not in self.docs:
+        with self.docs_lock:
+            doc_info = self.docs.get(did)
+        if doc_info is None:
             raise ValueError("Document not found — please drop or select the file again.")
-        doc_info = self.docs[did]
         filepath = doc_info["path"]
         total_pages = doc_info["pages"]
         if n < 0 or n >= total_pages:
@@ -286,7 +290,7 @@ class ViewerEngine:
         config_dict["pdftext_workers"] = 1
         config_dict["disable_tqdm"] = True
 
-        with self.lock:
+        if True:
             t_start = time.perf_counter()
             models = self.get_models()
             converter = PdfConverter(
@@ -828,9 +832,9 @@ const HINT={
  balanced:"Smart routing: pdftext + Indra on clean prose; Surya 2.5 VLM on tables, math, CJK & scans.",
  vllm:"Full-page Surya 2.5 VLM OCR on every page, skipping pdftext and Indra entirely."
 };
-let mode="auto",doc=null,stats=[],pagesMd=[],runId=0,timerId=null;
+let mode="auto",doc=null,stats=[],pagesMd=[],runId=0,timerId=null,runAbort=null;
 function setMode(v){mode=v;$$('#mode button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$('#modehint').textContent=HINT[v]||''}
-$$('#mode button').forEach(b=>b.onclick=()=>setMode(b.dataset.v));
+$$('#mode button').forEach(b=>b.onclick=()=>{setMode(b.dataset.v);if(doc)run();});
 $('#legend').innerHTML=LEGEND_ITEMS.map(([k,c])=>`<span style="white-space:nowrap;margin-right:8px"><span class="dot" style="background:${c}"></span>${k}</span>`).join(' ');
 function applyDisplay(){const o=$('#out');$$('.disp').forEach(i=>o.classList.toggle('hide-'+i.dataset.c,!i.checked))}
 $$('.disp').forEach(i=>i.onchange=applyDisplay);applyDisplay();
@@ -899,13 +903,20 @@ function parsePageIndices(spec,total,maxP){
  return out.slice(0,Math.max(1,maxP));
 }
 
+function abortRun(){if(runAbort){try{runAbort.abort();}catch(_){}runAbort=null;}}
+
 async function start(f){
- stopTimer();
+ stopTimer();abortRun();
  $('#fname').textContent=f.name+' · '+(f.size/1024).toFixed(0)+' KB';
  setBanner('run',`Uploading ${f.name}…`,(f.size/1024).toFixed(0)+' KB',100,true);
- const u=await (await fetch('/upload',{method:'POST',headers:{'X-Filename':encodeURIComponent(f.name)},body:await f.arrayBuffer()})).json();
- if(u.error||u.detail){setBanner('err','Upload error: '+(u.error||u.detail),'',100,false);return}
- doc={...u,name:f.name};$('#rerun').disabled=false;run();
+ try{
+  const r=await fetch('/upload',{method:'POST',headers:{'X-Filename':encodeURIComponent(f.name)},body:await f.arrayBuffer()});
+  const u=await r.json();
+  if(!r.ok||u.error||u.detail){setBanner('err','Upload error: '+(u.error||u.detail||r.statusText),'',100,false);return}
+  doc={...u,name:f.name};$('#rerun').disabled=false;run();
+ }catch(err){
+  setBanner('err','Upload failed: '+(err&&err.message?err.message:String(err)),'',100,false);
+ }
 }
 
 function opts(){
@@ -920,8 +931,9 @@ function opts(){
 }
 
 async function run(){
- stopTimer();
- const id=++runId,o=opts(),maxP=Math.max(1,+$('#maxp').value||20);
+ stopTimer();abortRun();
+ const id=++runId,ctrl=new AbortController(),o=opts(),maxP=Math.max(1,+$('#maxp').value||20);
+ runAbort=ctrl;
  const pageList=parsePageIndices($('#prange').value,doc.pages,maxP);
  if(!pageList.length){setBanner('err','No valid pages in range (0..'+(doc.pages-1)+')','',100,false);return;}
  $('#out').innerHTML='';stats=[];pagesMd=[];$('#dl-md').hidden=true;summary();
@@ -944,7 +956,16 @@ async function run(){
   curIdx=idx;curPage=pageList[idx]+1;
   updateTick();
   const n=pageList[idx];
-  const p=await (await fetch('/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:doc.id,n,opts:o})})).json();
+  let p;
+  try{
+   const resp=await fetch('/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:doc.id,n,opts:o}),signal:ctrl.signal});
+   p=await resp.json();
+  }catch(err){
+   if(id!==runId||(err&&err.name==='AbortError'))return;
+   stopTimer();inflight.remove();
+   setBanner('err',`Error on page ${n+1}: ${err&&err.message?err.message:String(err)}`,`${idx} / ${pageList.length} pages completed`,100,false);
+   return;
+  }
   if(id!==runId)return;
   if(p.error||p.detail){
    stopTimer();
