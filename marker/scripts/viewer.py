@@ -638,7 +638,30 @@ main{padding:24px;display:flex;flex-direction:column;gap:24px;min-width:0}
 .btn-sec:hover{background:var(--surface)}
 .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
 #stats{font:12px/1.7 var(--font-mono);color:var(--ink-2)}#stats b{color:var(--ink);font-weight:500}
-#status{font:12px var(--font-mono);color:var(--ink-3);min-height:18px}
+#status{font:500 12px var(--font-mono);color:var(--ink-2);min-height:18px}
+/* progress banner */
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.pbanner{position:sticky;top:68px;z-index:4;background:#fff;border:1.5px solid var(--accent);border-radius:12px;padding:14px 18px;box-shadow:0 6px 20px oklch(18% .012 263 / .10);display:flex;flex-direction:column;gap:10px;transition:border-color .2s,background .2s}
+.pbanner[hidden]{display:none!important}
+.pbanner.done{border-color:var(--ok);background:oklch(98.5% .015 145)}
+.pbanner.err{border-color:var(--err);background:oklch(98% .02 25)}
+.prow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.spin{width:18px;height:18px;border:2.5px solid var(--accent-soft);border-top-color:var(--accent);border-radius:50%;animation:spin .75s linear infinite;flex:none}
+.pbanner.done .spin,.pbanner.err .spin{display:none}
+.pbadge{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font:700 12px var(--font-mono);color:#fff;flex:none}
+.pbanner.done .pbadge{background:var(--ok)}
+.pbanner.err .pbadge{background:var(--err)}
+.ptitle{font:600 14px var(--font-body);color:var(--ink)}
+.pbanner.err .ptitle{color:var(--err)}
+.psub{font:500 12.5px var(--font-mono);color:var(--ink-2);margin-left:auto}
+.ptrack{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden;position:relative}
+.pfill{height:100%;border-radius:999px;background:var(--accent);transition:width .25s var(--ease)}
+.pfill.indet{width:100%!important;background:linear-gradient(90deg,var(--accent-soft) 0%,var(--accent) 50%,var(--accent-soft) 100%);background-size:200% 100%;animation:shimmer 1.4s ease-in-out infinite}
+.pbanner.done .pfill{background:var(--ok)}
+.pbanner.err .pfill{background:var(--err)}
+.inflight{border:1.5px dashed var(--accent);border-radius:12px;padding:36px 24px;text-align:center;background:color-mix(in oklch,var(--accent-soft) 45%,#fff);color:var(--ink-2);display:flex;flex-direction:column;align-items:center;gap:10px}
+.inflight b{font-size:15px;color:var(--ink)}
 .callout{border:var(--hairline) solid var(--rule);border-radius:10px;padding:12px;background:var(--surface);font-size:12.5px;color:var(--ink-2)}
 /* empty state */
 .empty{border:1px dashed var(--rule-strong);border-radius:14px;padding:64px 24px;text-align:center;color:var(--ink-3)}
@@ -745,7 +768,19 @@ footer{padding:18px 24px;border-top:var(--hairline) solid var(--rule);display:fl
  </div>
  <div class="callout">Need handwriting, complex forms, and highest-accuracy VLM parsing at scale? <a href="https://www.datalab.to/?utm_source=marker-viewer" target="_blank" rel="noopener">Chandra on Datalab</a> includes 5,000 free pages/month with a work email.</div>
 </aside>
-<main id="out"><div class="empty"><h2>Convert a document</h2>Drop a PDF, image, or Office document on the left. Pages appear as they finish with interactive layout blocks, reading order, lines, Markdown, HTML, Chunks, and JSON.</div></main>
+<main>
+ <div class="pbanner" id="pbanner" hidden>
+  <div class="prow">
+   <div class="spin" id="pspin"></div>
+   <div class="pbadge" id="pbadge" hidden>✓</div>
+   <div class="ptitle" id="ptitle">Converting document…</div>
+   <div class="psub" id="psub">0 / 0 pages · 0.0s</div>
+   <button class="btn-sec" id="pbanner-dl" hidden>Download .md</button>
+  </div>
+  <div class="ptrack"><div class="pfill indet" id="pfill" style="width:0%"></div></div>
+ </div>
+ <div id="out" style="display:flex;flex-direction:column;gap:24px"><div class="empty"><h2>Convert a document</h2>Drop a PDF, image, or Office document on the left. Pages appear as they finish with interactive layout blocks, reading order, lines, Markdown, HTML, Chunks, and JSON.</div></div>
+</main>
 </div>
 <footer><span>Marker · high-speed document conversion by <a href="https://www.datalab.to" target="_blank" rel="noopener">Datalab</a></span><span class="mono">Runs locally: your files stay on this machine.</span></footer>
 <script>
@@ -793,7 +828,7 @@ const HINT={
  balanced:"Smart routing: pdftext + Indra on clean prose; Surya 2.5 VLM on tables, math, CJK & scans.",
  vllm:"Full-page Surya 2.5 VLM OCR on every page, skipping pdftext and Indra entirely."
 };
-let mode="auto",doc=null,stats=[],pagesMd=[],runId=0;
+let mode="auto",doc=null,stats=[],pagesMd=[],runId=0,timerId=null;
 function setMode(v){mode=v;$$('#mode button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$('#modehint').textContent=HINT[v]||''}
 $$('#mode button').forEach(b=>b.onclick=()=>setMode(b.dataset.v));
 $('#legend').innerHTML=LEGEND_ITEMS.map(([k,c])=>`<span style="white-space:nowrap;margin-right:8px"><span class="dot" style="background:${c}"></span>${k}</span>`).join(' ');
@@ -805,12 +840,31 @@ drop.onclick=()=>file.click();file.onchange=()=>file.files[0]&&start(file.files[
 drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};drop.ondragleave=()=>drop.classList.remove('over');
 drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');e.dataTransfer.files[0]&&start(e.dataTransfer.files[0])};
 $('#rerun').onclick=()=>doc&&run();
-$('#dl-md').onclick=()=>{
+function dlMarkdown(){
  if(!pagesMd.length)return;
  const blob=new Blob([pagesMd.join('\n\n---\n\n')],{type:'text/markdown;charset=utf-8'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
  a.download=((doc&&doc.name)||'document').replace(/\.[^.]+$/,'')+'.md';a.click();
-};
+}
+$('#dl-md').onclick=dlMarkdown;
+$('#pbanner-dl').onclick=dlMarkdown;
+
+function setBanner(state,title,sub,pct,indet){
+ const b=$('#pbanner'),f=$('#pfill'),bd=$('#pbadge');
+ b.hidden=false;
+ b.classList.toggle('done',state==='done');
+ b.classList.toggle('err',state==='err');
+ bd.hidden=state==='run';
+ bd.textContent=state==='err'?'!':'✓';
+ $('#ptitle').textContent=title;
+ $('#psub').textContent=sub||'';
+ f.classList.toggle('indet',!!indet);
+ f.style.width=Math.max(0,Math.min(100,pct||0))+'%';
+ $('#pbanner-dl').hidden=!(state==='done'&&pagesMd.length);
+ $('#status').textContent=title+(sub?' ('+sub+')':'');
+}
+
+function stopTimer(){if(timerId){clearInterval(timerId);timerId=null;}}
 
 fetch('/info').then(r=>r.json()).then(i=>{
  $('#ver').textContent='v'+(i.version||'2.1.0');
@@ -846,10 +900,11 @@ function parsePageIndices(spec,total,maxP){
 }
 
 async function start(f){
+ stopTimer();
  $('#fname').textContent=f.name+' · '+(f.size/1024).toFixed(0)+' KB';
- $('#status').textContent='Uploading ...';
+ setBanner('run',`Uploading ${f.name}…`,(f.size/1024).toFixed(0)+' KB',100,true);
  const u=await (await fetch('/upload',{method:'POST',headers:{'X-Filename':encodeURIComponent(f.name)},body:await f.arrayBuffer()})).json();
- if(u.error||u.detail){$('#status').textContent='Error: '+(u.error||u.detail);return}
+ if(u.error||u.detail){setBanner('err','Upload error: '+(u.error||u.detail),'',100,false);return}
  doc={...u,name:f.name};$('#rerun').disabled=false;run();
 }
 
@@ -865,21 +920,49 @@ function opts(){
 }
 
 async function run(){
+ stopTimer();
  const id=++runId,o=opts(),maxP=Math.max(1,+$('#maxp').value||20);
  const pageList=parsePageIndices($('#prange').value,doc.pages,maxP);
- if(!pageList.length){$('#status').textContent='No valid pages in range (0..'+(doc.pages-1)+')';return;}
+ if(!pageList.length){setBanner('err','No valid pages in range (0..'+(doc.pages-1)+')','',100,false);return;}
  $('#out').innerHTML='';stats=[];pagesMd=[];$('#dl-md').hidden=true;summary();
+ const inflight=document.createElement('div');
+ inflight.className='inflight';
  const t0=performance.now();
+ let curIdx=0,curPage=pageList[0]+1;
+ const updateTick=()=>{
+  const elapsed=((performance.now()-t0)/1000).toFixed(1)+'s';
+  const pct=Math.round((curIdx/pageList.length)*100);
+  const sub=`${curIdx} / ${pageList.length} pages (${pct}%) · ${elapsed}`;
+  setBanner('run',`Converting Page ${curPage} (${curIdx+1} of ${pageList.length}) · mode: ${o.mode}`,sub,pct,curIdx===0);
+  inflight.innerHTML=`<div class="spin"></div><b>Converting Page ${curPage} (${curIdx+1} of ${pageList.length})…</b><span class="mono" style="font-size:12px">${elapsed} elapsed · mode: ${esc(o.mode)}</span>`;
+ };
+ $('#out').appendChild(inflight);
+ updateTick();
+ timerId=setInterval(updateTick,100);
  for(let idx=0;idx<pageList.length;idx++){
   if(id!==runId)return;
+  curIdx=idx;curPage=pageList[idx]+1;
+  updateTick();
   const n=pageList[idx];
-  $('#status').textContent=`Converting page ${n+1} (${idx+1} of ${pageList.length}) ...`;
   const p=await (await fetch('/page',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:doc.id,n,opts:o})})).json();
   if(id!==runId)return;
-  if(p.error||p.detail){$('#status').textContent=`Error on page ${n+1}: ${p.error||p.detail}`;return}
-  render(p);stats.push(p.timings);if(p.markdown)pagesMd.push(p.markdown);$('#dl-md').hidden=!pagesMd.length;summary();
+  if(p.error||p.detail){
+   stopTimer();
+   inflight.remove();
+   setBanner('err',`Error on page ${n+1}: ${p.error||p.detail}`,`${idx} / ${pageList.length} pages completed`,100,false);
+   return;
+  }
+  inflight.remove();
+  render(p);
+  if(idx+1<pageList.length)$('#out').appendChild(inflight);
+  stats.push(p.timings);if(p.markdown)pagesMd.push(p.markdown);$('#dl-md').hidden=!pagesMd.length;summary();
  }
- $('#status').textContent=`${pageList.length} page${pageList.length>1?'s':''} converted in ${(performance.now()-t0).toFixed(0)} ms`;
+ stopTimer();
+ inflight.remove();
+ const totMs=performance.now()-t0;
+ const avgMs=(totMs/pageList.length).toFixed(0);
+ const pps=(1000*pageList.length/Math.max(1,totMs)).toFixed(1);
+ setBanner('done',`Converted ${pageList.length} page${pageList.length>1?'s':''} in ${(totMs/1000).toFixed(2)}s`,`${avgMs} ms/page · ${pps} pages/s`,100,false);
 }
 
 function summary(){
