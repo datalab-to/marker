@@ -81,7 +81,7 @@ class PdfConverter(BaseConverter):
         "skipping pdftext and Indra entirely). Defaults by device: 'balanced' on",
         "GPU, 'fast' on CPU/MPS.",
     ] = None
-    default_processors: Tuple[BaseProcessor, ...] = (
+    default_processors: Tuple[Type[BaseProcessor], ...] = (
         BlockRelabelProcessor,
         LineMergeProcessor,
         BlockquoteProcessor,
