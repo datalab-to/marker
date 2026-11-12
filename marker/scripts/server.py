@@ -122,7 +122,7 @@ class ViewerPageParams(BaseModel):
 if _HAS_FASTAPI:
     app = FastAPI(
         title="Marker API & Interactive Viewer",
-        version="2.1.0",
+        version="2.2.0",
         lifespan=lifespan,
     )
 

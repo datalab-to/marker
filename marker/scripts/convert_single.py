@@ -26,7 +26,7 @@ logger = get_logger()
     cls=CustomClickPrinter,
     help="Convert a single PDF, image, or Office document to Markdown, JSON, Chunks, or HTML.",
 )
-@click.version_option(version="2.1.0", prog_name="marker-pdf")
+@click.version_option(version="2.2.0", prog_name="marker-pdf")
 @click.argument("fpath", type=str, required=False, default=None)
 @click.option(
     "--stdout",

@@ -45,7 +45,7 @@ try:
 except Exception:
     LOGO = ""
 
-MARKER_VERSION = "2.1.0"
+MARKER_VERSION = "2.2.0"
 MAX_SIDE = 1600
 MODES = ("auto", "no_ocr", "fast", "indra", "balanced", "vllm", "surya", "accurate")
 TIMING_KEYS = ("layout_ms", "ocr_ms", "postprocess_ms", "render_ms", "total_ms")

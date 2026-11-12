@@ -135,4 +135,4 @@ def test_discover_input_files_and_skills(tmp_path):
 
     res_ver = runner.invoke(convert_single_cli, ["--version"])
     assert res_ver.exit_code == 0
-    assert "2.1.0" in res_ver.output
+    assert "2.2.0" in res_ver.output

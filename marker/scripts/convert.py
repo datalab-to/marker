@@ -183,7 +183,7 @@ def process_single_pdf(args):
     cls=CustomClickPrinter,
     help="Convert a folder of documents (or a single file) to Markdown, JSON, Chunks, or HTML.",
 )
-@click.version_option(version="2.1.0", prog_name="marker-pdf")
+@click.version_option(version="2.2.0", prog_name="marker-pdf")
 @click.argument("in_folder", type=str, required=False, default=None)
 @click.option(
     "--chunk_idx",
