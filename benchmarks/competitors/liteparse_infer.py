@@ -10,6 +10,11 @@ parallelism), files sharded across the pool.
 comparable to marker fast-no-OCR (no OCR / no VLM, CPU text layer only). With
 OCR on, scanned pages fall back to Tesseract, which dominates wall time.
 
+Output is liteparse's markdown (``output_format="markdown"``, read from
+``page.markdown``): headings, tables and reading order, the same kind of output
+marker is scored on. ``page.text`` is liteparse's spatial plain-text layout,
+which has no table or heading markup.
+
 Writes ``<out>/<category>/<stem>_pg1_repeat1.md`` for olmOCR-bench scoring and
 prints sustained pages/sec.
 """
@@ -29,7 +34,12 @@ def _init(ocr_enabled, out, pdfdir):
     global _LP, _OUT, _PDFDIR
     from liteparse import LiteParse
 
-    _LP = LiteParse(ocr_enabled=ocr_enabled, num_workers=1, quiet=True)
+    _LP = LiteParse(
+        ocr_enabled=ocr_enabled,
+        num_workers=1,
+        quiet=True,
+        output_format="markdown",
+    )
     _OUT, _PDFDIR = out, pdfdir
 
 
@@ -38,7 +48,7 @@ def _one(pdf):
         result = _LP.parse(pdf)
         pages = getattr(result, "pages", None)
         text = (
-            "\n\n".join(getattr(p, "text", "") or "" for p in pages)
+            "\n\n".join(getattr(p, "markdown", "") or "" for p in pages)
             if pages
             else getattr(result, "text", "") or ""
         )
