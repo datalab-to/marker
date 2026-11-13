@@ -5,13 +5,8 @@ import time
 from typing import List
 
 import psutil
-import torch
 
 from marker.utils.batch import get_worker_count
-
-# Let unsupported MPS ops fall back to CPU (Apple Silicon); matches the other
-# entrypoints. Workers/servers spawned here inherit this.
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 # Ensure threads don't contend
 os.environ["MKL_DYNAMIC"] = "FALSE"
@@ -21,14 +16,13 @@ os.environ["OPENBLAS_NUM_THREADS"] = "2"
 os.environ["MKL_NUM_THREADS"] = "2"
 os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
-os.environ["IN_STREAMLIT"] = "true"  # Avoid multiprocessing inside surya
 
 import gc
 import math
+import multiprocessing as mp
 import traceback
 
 import click
-import torch.multiprocessing as mp
 from tqdm import tqdm
 
 from marker.config.parser import ConfigParser
@@ -128,7 +122,7 @@ def process_single_pdf(args):
     cli_options = dict(cli_options)
     torch_threads = cli_options.pop("total_torch_threads", 2)
     base_in_folder = cli_options.pop("_base_in_folder", None)
-    torch.set_num_threads(torch_threads)
+    os.environ["OMP_NUM_THREADS"] = str(torch_threads)
 
     config_parser = ConfigParser(cli_options)
 
@@ -183,7 +177,7 @@ def process_single_pdf(args):
     cls=CustomClickPrinter,
     help="Convert a folder of documents (or a single file) to Markdown, JSON, Chunks, or HTML.",
 )
-@click.version_option(version="2.2.0", prog_name="marker-pdf")
+@click.version_option(version="2.2.1", prog_name="marker-pdf")
 @click.argument("in_folder", type=str, required=False, default=None)
 @click.option(
     "--chunk_idx",
@@ -375,10 +369,10 @@ def convert_cli(
                 f"requests per worker across {total_processes} workers"
             )
 
-    # The VLM runs on the server; workers only hold the small ocr error model.
-    # Keep it off the GPU in multi-worker mode - the server owns the VRAM.
+    # The VLM runs on the server; workers only hold the ONNX models.
+    # Keep them off the GPU in multi-worker mode - the server owns the VRAM.
     model_device = None
-    if total_processes > 1 and torch.cuda.is_available():
+    if total_processes > 1 and settings.TORCH_DEVICE_MODEL == "cuda":
         model_device = "cpu"
 
     cpu_cores = psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 2

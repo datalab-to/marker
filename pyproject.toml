@@ -1,6 +1,6 @@
 [project]
 name = "marker-pdf"
-version = "2.2.0"
+version = "2.2.1"
 description = "Convert documents to markdown with high speed and accuracy."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -14,12 +14,11 @@ dependencies = [
     "pydantic>=2.4.2,<3",
     "pydantic-settings>=2.0.3,<3",
     "python-dotenv>=1.0.0,<2",
-    "torch>=2.7.0,<3",
     "psutil>=7.0.0,<8",
     "tqdm>=4.66.1,<5",
     "ftfy>=6.1.1,<7",
     "rapidfuzz>=3.8.1,<4",
-    "surya-ocr>=0.23.0,<0.24.0",
+    "surya-ocr>=0.24.0,<0.25.0",
     "indra-ocr>=1.1.2,<2",
     "onnxruntime<=1.23.2; python_version < '3.11'",
     "regex>=2024.4.28",
@@ -49,7 +48,7 @@ full = [
 [project.scripts]
 marker = "marker.scripts.convert:convert_cli"
 marker_single = "marker.scripts.convert_single:convert_single_cli"
-marker_gui = "marker.scripts.run_streamlit_app:streamlit_app_cli"
+marker_gui = "marker.scripts.viewer:viewer_cli"
 marker_server = "marker.scripts.server:server_cli"
 
 [dependency-groups]
@@ -57,7 +56,6 @@ dev = [
     "pre-commit>=4.2.0",
     "jupyter>=1.0.0",
     "datasets>=2.21.0",
-    "streamlit>=1.37.1",
     "fastapi>=0.115.4",
     "uvicorn>=0.32.0",
     "python-multipart>=0.0.16",

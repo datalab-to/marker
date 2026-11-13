@@ -72,7 +72,14 @@ def pdf_dataset():
     try:
         import datasets
 
-        return datasets.load_dataset("datalab-to/pdfs", split="train")
+        try:
+            return datasets.load_dataset("datalab-to/pdfs", split="train")
+        except Exception:
+            return datasets.load_dataset(
+                "datalab-to/pdfs",
+                split="train",
+                download_config=datasets.DownloadConfig(local_files_only=True),
+            )
     except Exception as exc:
         pytest.skip(f"datalab-to/pdfs dataset unavailable: {exc}")
 

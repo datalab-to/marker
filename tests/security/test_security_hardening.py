@@ -171,7 +171,7 @@ def test_viewer_endpoints_and_ui():
     info_resp = client.get("/info")
     assert info_resp.status_code == 200
     info = info_resp.json()
-    assert info["version"] == "2.2.0"
+    assert info["version"] == "2.2.1"
     assert info["modes"] == ["auto", "no_ocr", "fast", "balanced", "vllm"]
     assert "defaults" in info
 

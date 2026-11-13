@@ -3,9 +3,6 @@ import sys
 
 os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = (
-    "1"  # Transformers uses .isin for a simple op, which is not supported on MPS
-)
 
 import time
 import click
@@ -26,7 +23,7 @@ logger = get_logger()
     cls=CustomClickPrinter,
     help="Convert a single PDF, image, or Office document to Markdown, JSON, Chunks, or HTML.",
 )
-@click.version_option(version="2.2.0", prog_name="marker-pdf")
+@click.version_option(version="2.2.1", prog_name="marker-pdf")
 @click.argument("fpath", type=str, required=False, default=None)
 @click.option(
     "--stdout",

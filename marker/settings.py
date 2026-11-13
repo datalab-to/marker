@@ -1,10 +1,31 @@
 from typing import Optional
+import os
+import platform
+import shutil
+import subprocess
 
 from dotenv import find_dotenv
 from pydantic import computed_field, model_validator
 from pydantic_settings import BaseSettings
-import torch
-import os
+
+
+def _has_nvidia_gpu() -> bool:
+    if os.path.exists("/dev/nvidia0") or os.path.exists("/proc/driver/nvidia/version"):
+        return True
+    nvidia_smi = shutil.which("nvidia-smi")
+    if not nvidia_smi:
+        return False
+    try:
+        result = subprocess.run(
+            [nvidia_smi, "-L"], capture_output=True, text=True, timeout=5
+        )
+        return result.returncode == 0 and "GPU" in result.stdout
+    except Exception:
+        return False
+
+
+def _is_apple_silicon() -> bool:
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
 
 
 class Settings(BaseSettings):
@@ -37,7 +58,7 @@ class Settings(BaseSettings):
 
     # General models
     TORCH_DEVICE: Optional[str] = (
-        None  # Device for the local torch models (ocr error, fast layout); the VLM runs on the inference server
+        None  # Device preference override ("cuda", "mps", or "cpu")
     )
 
     @computed_field
@@ -46,10 +67,10 @@ class Settings(BaseSettings):
         if self.TORCH_DEVICE is not None:
             return self.TORCH_DEVICE
 
-        if torch.cuda.is_available():
+        if _has_nvidia_gpu():
             return "cuda"
 
-        if torch.backends.mps.is_available():
+        if _is_apple_silicon():
             return "mps"
 
         return "cpu"

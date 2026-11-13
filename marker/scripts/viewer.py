@@ -45,7 +45,7 @@ try:
 except Exception:
     LOGO = ""
 
-MARKER_VERSION = "2.2.0"
+MARKER_VERSION = "2.2.1"
 MAX_SIDE = 1600
 MODES = ("auto", "no_ocr", "fast", "indra", "balanced", "vllm", "surya", "accurate")
 TIMING_KEYS = ("layout_ms", "ocr_ms", "postprocess_ms", "render_ms", "total_ms")
@@ -1062,11 +1062,82 @@ function render(p,beforeEl){
 </script></body></html>"""
 
 
-def viewer_cli(port: int = 8000, host: str = "127.0.0.1"):
-    engine = ViewerEngine()
-    srv = ThreadingHTTPServer((host, port), make_handler(engine))
-    print(f"Marker Viewer running on http://{host}:{port}", flush=True)
-    srv.serve_forever()
+def viewer_cli(port: int | None = None, host: str | None = None):
+    import argparse
+    import sys
+
+    if port is not None or host is not None:
+        resolved_port = port if port is not None else 8000
+        resolved_host = host if host is not None else "127.0.0.1"
+        engine = ViewerEngine()
+        srv = ThreadingHTTPServer((resolved_host, resolved_port), make_handler(engine))
+        print(f"Marker Viewer running on http://{resolved_host}:{resolved_port}", flush=True)
+        srv.serve_forever()
+        return
+
+    ap = argparse.ArgumentParser(
+        description="Launch the Marker interactive web viewer."
+    )
+    ap.add_argument("--port", type=int, default=8000, help="Port to run the viewer on")
+    ap.add_argument(
+        "--host", type=str, default="127.0.0.1", help="Host to bind the viewer to"
+    )
+    ap.add_argument(
+        "--dpi", type=int, default=150, help="Initial render resolution (DPI)"
+    )
+    ap.add_argument(
+        "--max-pages", type=int, default=20, help="Initial page limit per document"
+    )
+    ap.add_argument(
+        "--mode",
+        choices=["auto", "no_ocr", "fast", "balanced", "vllm"],
+        default="auto",
+        help="Initial conversion mode",
+    )
+    ap.add_argument(
+        "--version",
+        action="version",
+        version="marker-pdf, version 2.2.1",
+    )
+    args, _ = ap.parse_known_args(sys.argv[1:])
+
+    try:
+        import uvicorn
+        from marker.scripts.server import app, viewer_engine
+
+        if app is None:
+            raise ImportError("FastAPI is not installed")
+
+        viewer_engine.defaults.update(
+            {
+                "mode": args.mode,
+                "dpi": args.dpi,
+                "max_pages": args.max_pages,
+            }
+        )
+        print(
+            f"Marker Viewer & API Server running on http://{args.host}:{args.port}",
+            flush=True,
+        )
+        uvicorn.run(app, host=args.host, port=args.port)
+    except ImportError:
+        engine = ViewerEngine(
+            defaults={
+                "mode": args.mode,
+                "force_ocr": False,
+                "use_llm": False,
+                "strip_existing_ocr": False,
+                "keep_headers_footers": False,
+                "dpi": args.dpi,
+                "max_pages": args.max_pages,
+            }
+        )
+        srv = ThreadingHTTPServer((args.host, args.port), make_handler(engine))
+        print(
+            f"Marker Viewer running on http://{args.host}:{args.port}",
+            flush=True,
+        )
+        srv.serve_forever()
 
 
 if __name__ == "__main__":

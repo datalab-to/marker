@@ -122,11 +122,11 @@ TESTS_BY_PDF = _load_tests_by_pdf()
 @pytest.mark.parametrize("pdf_name", sorted(TESTS_BY_PDF))
 def test_olmocr_bench_page(model_dict, pdf_name):
     import os
-    import torch
+    from marker.settings import settings
 
     mode = (
         "balanced"
-        if (torch.cuda.is_available() or os.environ.get("SURYA_INFERENCE_URL"))
+        if (settings.TORCH_DEVICE_MODEL == "cuda" or os.environ.get("SURYA_INFERENCE_URL"))
         else "indra"
     )
     converter = PdfConverter(
