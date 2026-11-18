@@ -42,5 +42,5 @@ class HTMLProvider(PdfProvider):
             html_str = f.read()
         HTML(
             string=html_str,
-            url_fetcher=safe_weasyprint_url_fetcher,
+            url_fetcher=safe_weasyprint_url_fetcher(),
         ).write_pdf(self.temp_pdf_path, stylesheets=[font_css])

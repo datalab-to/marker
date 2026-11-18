@@ -13,34 +13,36 @@ def alphanum_ratio(text: str) -> float:
     return alphanumeric_count / len(text)
 
 
-def safe_weasyprint_url_fetcher(url: str):
-    """WeasyPrint url_fetcher that blocks external network requests and local file inclusion."""
+def _is_allowed_weasyprint_url(url: str) -> bool:
+    """Only data: URIs and the bundled font file may be fetched during rendering."""
     parsed = urlparse(url)
     scheme = (parsed.scheme or "").lower()
-    allowed = False
     if scheme == "data":
-        allowed = True
-    elif scheme == "file":
+        return True
+    if scheme == "file":
         target = os.path.realpath(unquote(parsed.path))
         font_real = os.path.realpath(settings.FONT_PATH)
-        if target == font_real and os.path.isfile(font_real):
-            allowed = True
-    if not allowed:
-        raise ValueError(
-            f"Blocked external or local URL in document conversion: {url}"
-        )
-    try:
-        from weasyprint import default_url_fetcher
+        return target == font_real and os.path.isfile(font_real)
+    return False
 
-        return default_url_fetcher(url)
-    except ImportError:
-        from urllib.request import urlopen
 
-        with urlopen(url) as resp:
-            return {
-                "string": resp.read(),
-                "mime_type": resp.headers.get_content_type(),
-            }
+def safe_weasyprint_url_fetcher():
+    """Build a WeasyPrint URL fetcher that blocks external network requests and local file inclusion.
+
+    WeasyPrint >= 70 requires fetchers to be ``URLFetcher`` instances, so this returns a
+    new instance per call. WeasyPrint is imported lazily since it is an optional dependency.
+    """
+    from weasyprint.urls import URLFetcher
+
+    class SafeURLFetcher(URLFetcher):
+        def fetch(self, url, headers=None):
+            if not _is_allowed_weasyprint_url(url):
+                raise ValueError(
+                    f"Blocked external or local URL in document conversion: {url}"
+                )
+            return super().fetch(url, headers)
+
+    return SafeURLFetcher()
 
 
 def validate_zip_archive(
