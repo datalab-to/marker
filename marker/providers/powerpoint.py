@@ -116,7 +116,7 @@ class PowerPointProvider(PdfProvider):
         # We convert the HTML into a PDF
         HTML(
             string=html,
-            url_fetcher=safe_weasyprint_url_fetcher,
+            url_fetcher=safe_weasyprint_url_fetcher(),
         ).write_pdf(
             self.temp_pdf_path, stylesheets=[CSS(string=css), self.get_font_css()]
         )

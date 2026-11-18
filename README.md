@@ -93,7 +93,7 @@ Our code is licensed under **Apache 2.0** — free to use, including commerciall
 
 # Installation
 
-You'll need python 3.10+ and [PyTorch](https://pytorch.org/get-started/locally/).
+You'll need python 3.11+ and [PyTorch](https://pytorch.org/get-started/locally/).
 
 Install with:
 

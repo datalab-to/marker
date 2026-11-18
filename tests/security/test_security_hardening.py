@@ -6,7 +6,11 @@ pytestmark = pytest.mark.cpu
 
 import marker.scripts.server as server_mod
 from marker.providers.spreadsheet import SpreadSheetProvider
-from marker.providers.utils import safe_weasyprint_url_fetcher, validate_zip_archive
+from marker.providers.utils import (
+    _is_allowed_weasyprint_url,
+    safe_weasyprint_url_fetcher,
+    validate_zip_archive,
+)
 from marker.schema.text.span import sanitize_url
 from marker.scripts.common import img_to_html, sanitize_html_for_display
 from marker.util import strings_to_classes
@@ -70,22 +74,45 @@ def test_server_upload_size_limit_and_cleanup(monkeypatch, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_safe_weasyprint_url_fetcher():
+def test_weasyprint_url_allowlist():
     # External URLs must be blocked
-    with pytest.raises(ValueError, match="Blocked external or local URL"):
-        safe_weasyprint_url_fetcher("http://169.254.169.254/latest/meta-data/")
-
-    with pytest.raises(ValueError, match="Blocked external or local URL"):
-        safe_weasyprint_url_fetcher("https://evil.example.com/payload.css")
+    assert not _is_allowed_weasyprint_url("http://169.254.169.254/latest/meta-data/")
+    assert not _is_allowed_weasyprint_url("https://evil.example.com/payload.css")
 
     # Arbitrary local file:// URLs must be blocked
-    with pytest.raises(ValueError, match="Blocked external or local URL"):
-        safe_weasyprint_url_fetcher("file:///etc/passwd")
+    assert not _is_allowed_weasyprint_url("file:///etc/passwd")
 
     # data: URIs are permitted
-    res = safe_weasyprint_url_fetcher("data:text/plain;base64,SGVsbG8=")
-    payload = res.get("string") or res["file_obj"].read()
-    assert payload == b"Hello"
+    assert _is_allowed_weasyprint_url("data:text/plain;base64,SGVsbG8=")
+
+
+# The fetcher subclasses WeasyPrint's URLFetcher (required since WeasyPrint 70), so the
+# two tests below need the `full` extra, like the other WeasyPrint-backed provider tests.
+# test_weasyprint_url_allowlist covers the blocked-URL rules without WeasyPrint.
+def test_safe_weasyprint_url_fetcher():
+    fetcher = safe_weasyprint_url_fetcher()
+
+    with pytest.raises(ValueError, match="Blocked external or local URL"):
+        fetcher("https://evil.example.com/payload.css")
+
+    res = fetcher("data:text/plain;base64,SGVsbG8=")
+    assert res.read() == b"Hello"
+    res.close()
+
+
+def test_safe_weasyprint_url_fetcher_render(tmp_path):
+    from weasyprint import HTML
+
+    # Blocked resources must be skipped without aborting the render
+    html = """
+    <link rel="stylesheet" href="https://evil.example.com/payload.css">
+    <img src="file:///etc/passwd">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==">
+    <p>Hello</p>
+    """
+    out = tmp_path / "out.pdf"
+    HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher()).write_pdf(out)
+    assert out.read_bytes().startswith(b"%PDF")
 
 
 def test_validate_zip_archive(tmp_path):

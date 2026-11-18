@@ -117,7 +117,7 @@ class EpubProvider(PdfProvider):
         HTML(
             string=html_content,
             base_url=filepath,
-            url_fetcher=safe_weasyprint_url_fetcher,
+            url_fetcher=safe_weasyprint_url_fetcher(),
         ).write_pdf(
             self.temp_pdf_path,
             stylesheets=[CSS(string=full_style), self.get_font_css()],
