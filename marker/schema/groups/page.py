@@ -87,7 +87,7 @@ class PageGroup(Group):
     @computed_field
     @property
     def current_children(self) -> List[Block]:
-        return [child for child in self.children if not child.removed]
+        return [child for child in (self.children or []) if not child.removed]
 
     def get_next_block(
         self,
@@ -192,7 +192,7 @@ class PageGroup(Group):
         super().replace_block(block, new_block)
 
         # Replace block in structure of children
-        for child in self.children:
+        for child in self.children or []:
             child.replace_block(block, new_block)
 
         # Mark block as removed
