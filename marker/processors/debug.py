@@ -65,7 +65,7 @@ class DebugProcessor(BaseProcessor):
 
             line_bboxes = []
             line_ids = []
-            for child in page.children:
+            for child in page.children or []:
                 # Skip any blocks that have been removed
                 if child.removed:
                     continue
@@ -96,7 +96,7 @@ class DebugProcessor(BaseProcessor):
 
             line_bboxes = []
             line_text = []
-            for child in page.children:
+            for child in page.children or []:
                 if child.removed:
                     continue
 

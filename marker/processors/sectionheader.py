@@ -43,7 +43,7 @@ class SectionHeaderProcessor(BaseProcessor):
         line_heights: Dict[int, float] = {}
         for page in document.pages:
             # Iterate children to grab all section headers
-            for block in page.children:
+            for block in page.children or []:
                 if block.block_type not in self.block_types:
                     continue
                 if block.html:
@@ -66,7 +66,7 @@ class SectionHeaderProcessor(BaseProcessor):
 
         for page in document.pages:
             # Iterate children to grab all section headers
-            for block in page.children:
+            for block in page.children or []:
                 if block.block_type not in self.block_types:
                     continue
                 if block.html:

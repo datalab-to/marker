@@ -57,7 +57,7 @@ class OCRJSONRenderer(BaseRenderer):
         for page in document.pages:
             page_equations = [
                 b
-                for b in page.children
+                for b in (page.children or [])
                 if b.block_type == BlockTypes.Equation and not b.removed
             ]
             equation_lines = []
@@ -73,7 +73,7 @@ class OCRJSONRenderer(BaseRenderer):
 
             page_lines = [
                 block
-                for block in page.children
+                for block in (page.children or [])
                 if block.block_type == BlockTypes.Line
                 and block.id not in equation_lines
                 and not block.removed
@@ -82,7 +82,7 @@ class OCRJSONRenderer(BaseRenderer):
             # OCR'd blocks carry html directly and have no line children
             html_blocks = [
                 block
-                for block in page.children
+                for block in (page.children or [])
                 if block.block_type
                 not in (
                     BlockTypes.Line,
