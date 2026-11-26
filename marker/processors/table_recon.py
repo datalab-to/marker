@@ -28,8 +28,9 @@ _GARBLE_CHAR_FRAC = 0.02  # >2% private-use / replacement chars => garbled
 # Leader runs (TOC dot leaders, form underscores/dashes) - not real cells;
 # gridding them as columns explodes the column count, so they're dropped.
 _LEADER_ONLY = re.compile(r"^(?:[.·•…_\-]\s*){3,}$")
-_NUMISH = re.compile(r"^-?[\d,.]*\d[\d,.]*%?$")
-_NUM_TOK = re.compile(r"-?[\d,]+(\.\d+)?%?")
+# Optional leading sign: ASCII hyphen, U+2212 minus, or plus (e.g. +1.55).
+_NUMISH = re.compile(r"^[-\u2212+]?[\d,.]*\d[\d,.]*%?$")
+_NUM_TOK = re.compile(r"[-\u2212+]?[\d,]+(\.\d+)?%?")
 _YEAR = re.compile(r"^(19|20)\d\d$")
 _PCTISH = re.compile(r"(less than|to less|%)")
 
