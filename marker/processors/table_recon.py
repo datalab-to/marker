@@ -354,8 +354,10 @@ def _line_tokens(line: dict, bbox):
             ch = c.get("char", "")
             if not ch or ch.isspace():
                 if cur is not None and not cur[0].endswith(" "):
+                    # Don't extend the right edge: pdftext positions a space at
+                    # the START of the next word (zero width), so extending would
+                    # hide the cell gap and merge adjacent columns into one token.
                     cur[0] += " "
-                    cur[2] = max(cur[2], cx1)
                 continue
             # Split threshold: ~0.65x the char height. 0.25x-0.5x mis-split words
             # across font/style switches (e.g. "75.86 ± 11.42" or italic "n=");
