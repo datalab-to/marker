@@ -105,6 +105,11 @@ class TableProcessor(BaseProcessor):
             and not isinstance(rec_model, IndraRecognitionPredictor)
             and not type(rec_model).__module__.startswith("unittest.mock")
         )
+        # With a VLM available, balanced mode sends digital tables to it instead of
+        # the pdftext grid heuristic: on OmniParseBench the heuristic flattens
+        # rowspans and multi-row headers and loses table-cell accuracy. An explicit
+        # min_recon_score keeps the heuristic-first behavior.
+        prefer_vlm = use_vlm_for_digital_tables and self.min_recon_score is None
         ocr_fallback = []  # (page, block) digital tables the heuristics missed
         for page in document.pages:
             for block in tables_by_page.get(page.page_id, []):
@@ -117,7 +122,9 @@ class TableProcessor(BaseProcessor):
                     self.table_stats["tables_ocr"] += 1
                     continue
 
-                html = self.reconstruct_digital_table(page, block)
+                html = (
+                    None if prefer_vlm else self.reconstruct_digital_table(page, block)
+                )
                 if html:
                     self._retire_child_lines(document, block)
                     block.html = html
@@ -127,6 +134,18 @@ class TableProcessor(BaseProcessor):
                     ocr_fallback.append((page, block))
 
         self.run_ocr_fallback(document, ocr_fallback)
+        if prefer_vlm:
+            # VLM produced nothing usable for these (error or empty output): fall
+            # back to the heuristic rather than losing the table.
+            for page, block in ocr_fallback:
+                if block.html:
+                    continue
+                html = self.reconstruct_digital_table(page, block)
+                if html:
+                    self._retire_child_lines(document, block)
+                    block.html = html
+                    block.text_extraction_method = "pdftext"
+                    self.table_stats["tables_pdftext"] += 1
         self.cleanup_contained_blocks(document, tables_by_page)
 
         for page in document.pages:
