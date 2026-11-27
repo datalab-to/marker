@@ -55,8 +55,8 @@ On [OmniParseBench](https://huggingface.co/datasets/datalab-to/omni_parse_bench)
   - Full-page VLMs burn GPU compute on every single page — even clean born-digital PDFs. Marker's hybrid **`balanced`** mode keeps clean prose on CPU (`pdftext` + in-process [Indra ONNX](https://github.com/datalab-to/indra-ocr) layout) and only calls the GPU VLM on equations, complex tables, CJK/non-Latin scripts, and scans — outscoring **`PaddleOCR-VL-1.6`** (`78.7`) and **`DeepSeek-OCR-2`** (`75.2`, 3.4B) at **14–21× higher throughput**.
   - When you want full VLM OCR on every page, **`Marker vllm`** (powered by the compact 0.69B [Surya 2.5](https://github.com/datalab-to/surya) VLM) scores **85.9**, beating 1B–8B open VLMs (`LightOnOCR-3-4B` `82.9`, `GLM-OCR` `81.5`, `PaddleOCR-VL-1.6` `78.7`, `DeepSeek-OCR-2` `75.2`, `HunyuanOCR-1.5` `64.6`, `olmOCR-2` `42.6`).
 - **Best-in-class CPU-only parsing (`fast` & `no_ocr`) — no GPU or server required**:
-  - **`Marker fast`** runs 100% in-process on CPU/MPS (~18 MB Indra ONNX weights) and scores **71.0** at **23.6 pg/s** — beating **`docling`** (`67.5`) at **11–17× the speed**, beating 1B GPU VLMs like **`HunyuanOCR-1.5`** (`64.6`), outscoring **`PaddleOCR PP-StructureV3`** (`58.4`) by **+12.6 points at >130× the speed**, and delivering **5× higher accuracy at 2.4× the speed** of **`liteparse`** (`14.0` at `9.7 pg/s`) and **12× higher accuracy at 8× the speed** of **`Tesseract 5`** (`5.9` at `2.9 pg/s`).
-  - **`Marker no_ocr`** runs at **57.0 pg/s** on CPU with zero OCR calls, combining `pdftext` with Indra ONNX layout and CPU table reconstruction to score **81–83%** on born-digital multi-column and document suites (**3.4× higher overall** than `liteparse --no-ocr` at `40.8` vs `12.0`).
+  - **`Marker fast`** runs 100% in-process on CPU/MPS (~29 MB Indra ONNX weights) and scores **78.6** at **23.6 pg/s** — matching 1B–3.4B GPU VLMs (`PaddleOCR-VL-1.6` `78.7`, `DeepSeek-OCR-2` `75.2`, `HunyuanOCR-1.5` `64.6`), beating **`docling`** (`67.5`) by **+11.1 points at 11–17× the speed**, outscoring **`PaddleOCR PP-StructureV3`** (`58.4`) by **+20.2 points at >130× the speed**, and delivering **5.6× higher accuracy at 2.4× the speed** of **`liteparse`** (`14.0` at `9.7 pg/s`) and **13× higher accuracy at 8× the speed** of **`Tesseract 5`** (`5.9` at `2.9 pg/s`).
+  - **`Marker no_ocr`** runs at **57.0 pg/s** on CPU with zero OCR calls, combining `pdftext` with Indra ONNX layout and CPU table reconstruction to score **81–84%** on born-digital multi-column and document suites (**3.5× higher overall** than `liteparse --no-ocr` at `42.4` vs `12.0`).
 
 ### Which mode should I use?
 
@@ -64,8 +64,8 @@ On [OmniParseBench](https://huggingface.co/datasets/datalab-to/omni_parse_bench)
 |---|---|---:|---:|---|
 | `--mode balanced` *(GPU default)* | GPU + CPU | **16.9 pg/s** | **80.5** *(85.6 olmOCR suites)* | Production mixed workloads (born-digital PDFs, tables, math, CJK, and scans) |
 | `--mode vllm` | GPU | **4.5 pg/s** | **85.9** *(83.7 olmOCR-bench)* | Maximum accuracy on degraded scans, dense equations, handwriting, & complex tables |
-| `--mode fast` *(CPU/MPS default)* | CPU / MPS only | **23.6 pg/s** | **71.0** *(71.6 born-digital)* | Laptops, CI, serverless/CPU containers, and fast local OCR with zero GPU dependencies |
-| `--mode no_ocr` | CPU only | **57.0 pg/s** | **40.8** *(82.7 digital docs)* | Bulk born-digital PDFs when you want layout, reading order, & tables at maximum speed |
+| `--mode fast` *(CPU/MPS default)* | CPU / MPS only | **23.6 pg/s** | **78.6** *(77.8 olmOCR suites)* | Laptops, CI, serverless/CPU containers, and fast local OCR with zero GPU dependencies |
+| `--mode no_ocr` | CPU only | **57.0 pg/s** | **42.4** *(83.6 digital docs)* | Bulk born-digital PDFs when you want layout, reading order, & tables at maximum speed |
 
 <img src="data/images/omniparsebench_scores_bar.png" width="800px"/>
 
@@ -514,16 +514,16 @@ Representative scores from the [OmniParseBench leaderboard](https://huggingface.
 | Azure Document Intelligence | Hosted API | 83.0 | 74.6 | 81.7 | 92.8 | — |
 | LightOnOCR-3-4B | Open VLM (4.5B, GPU) | 82.9 | 83.9 | 70.8 | 94.0 | — |
 | GLM-OCR | Open VLM (1.3B, GPU) | 81.5 | 71.0 | 84.2 | 89.3 | — |
-| **Marker — `balanced`** | **Open Hybrid (GPU + CPU)** | **80.5** | **79.2** | **70.1** | **92.2** | **16.9 pg/s** |
+| **Marker — `balanced`** | **Open Hybrid (GPU + CPU)** | **80.5** | **79.2** | **72.9** | **92.5** | **16.9 pg/s** |
 | Nemotron 3.5 Parse | Open VLM (0.63B, GPU) | 80.0 | 72.4 | 77.3 | 90.2 | — |
+| [Indra OCR](https://github.com/datalab-to/indra-ocr) (standalone) | Open ONNX (12M, CPU) | 78.9 | 68.0 | 75.9 | 92.7 | 30.0 pg/s |
 | PaddleOCR-VL-1.6 | Open VLM (0.96B, GPU) | 78.7 | 61.7 | 83.7 | 90.7 | ~1.2 pg/s |
+| **Marker — `fast`** | **Open ONNX (CPU, no GPU)** | **78.6** | **67.8** | **75.7** | **92.4** | **23.6 pg/s** |
 | DeepSeek-OCR-2 | Open VLM (3.4B, GPU) | 75.2 | 64.2 | 70.0 | 91.4 | ~0.8 pg/s |
-| **Marker — `fast`** | **Open ONNX (CPU, no GPU)** | **71.0** | **62.3** | **59.6** | **91.2** | **23.6 pg/s** |
-| [Indra OCR](https://github.com/datalab-to/indra-ocr) (standalone) | Open ONNX (12M, CPU) | 69.5 | 60.3 | 58.1 | 90.1 | 49.4 pg/s |
 | docling | Open Pipeline (GPU / CPU) | 67.5 | 44.4 | 72.0 | 85.9 | 2.1 pg/s |
 | HunyuanOCR-1.5 | Open VLM (1.0B, GPU) | 64.6 | 50.5 | 61.9 | 81.4 | — |
 | PaddleOCR PP-StructureV3 | Open Pipeline (CPU) | 58.4 | 55.6 | 47.8 | 71.7 | ≤ 0.18 pg/s |
-| **Marker — `no_ocr`** | **Open Text-layer + ONNX (CPU)** | **40.8** | **22.7** | **22.0** | **77.8** | **57.0 pg/s** |
+| **Marker — `no_ocr`** | **Open Text-layer + ONNX (CPU)** | **42.4** | **22.8** | **21.8** | **82.7** | **57.0 pg/s** |
 | olmOCR-2 | Open VLM (8.3B, no layout) | 42.6\*\* | 71.3 | 56.6 | 0.0 | — |
 | Nanonets-OCR2-3B | Open VLM (3.8B, no layout) | 43.6\*\* | 68.2 | 62.6 | 0.0 | — |
 | liteparse | Open Parser (CPU, no layout/tables) | 14.0 | 42.0 | 0.0 | 0.0 | 9.7 pg/s |
@@ -545,34 +545,34 @@ Per-family breakdown (**Text**, **Tables**, **Layout**) across representative mo
 
 | Suite | Tests | `balanced` (GPU) | `fast` (CPU ONNX) | `no_ocr` (CPU) | `docling` |
 |---|---:|---:|---:|---:|---:|
-| `olmo_arxiv_math` | 3,272 | **90.8** | 77.8 | 49.1 | 59.0 |
-| `olmo_table_tests` | 718 | **88.4** | 80.3 | 56.4 | 88.1 |
-| `olmo_multi_column` | 352 | **88.2** | 86.0 | 81.4 | 83.9 |
-| `olmo_old_scans_math` | 450 | **85.5** | 54.3 | 48.7 | 4.8 |
-| `olmo_long_tiny_text` | 237 | 78.4 | **82.8** | 58.6 | 61.6 |
-| `olmo_old_scans` | 395 | **70.5** | 52.3 | 42.1 | 31.3 |
-| `tables_derived` | 5,427 | **80.9** | 80.1 | 63.3 | **88.4** |
-| `synth_copies` | 1,881 | **85.3** | 75.4 | 46.1 | 73.1 |
-| `multiling_finepdfs` | 676 | 80.2 | **87.4** | 59.2 | 63.2 |
-| `realdoc_pages` | 445 | **77.1** | 76.6 | 20.2 | 71.6 |
-| `realdoc_pdfs` | 256 | **82.4** | 77.7 | 28.6 | 52.8 |
-| `rotation_skew` | 377 | **84.3** | 83.7 | 34.0 | 81.1 |
-| `tiny_plans` | 372 | 83.9 | 77.2 | 45.3 | **91.2** |
-| `handwriting_samples` | 324 | **66.1** | 49.9 | 50.0 | 50.0 |
-| `docparsing_images` | 299 | 86.3 | 77.5 | 27.4 | **87.0** |
-| `parsebench_docs` | 293 | 85.4 | **89.5** | 82.7 | 86.9 |
-| `forms_federal` | 127 | 74.1 | 58.6 | 16.3 | **75.0** |
-| `forms_filled` | 107 | 75.9 | 80.5 | 48.0 | **81.3** |
+| `olmo_arxiv_math` | 3,272 | **90.8** | 82.5 | 49.5 | 59.0 |
+| `olmo_table_tests` | 718 | **88.4** | 86.3 | 54.0 | 88.1 |
+| `olmo_multi_column` | 352 | **88.2** | 85.6 | 80.7 | 83.9 |
+| `olmo_old_scans_math` | 450 | **85.5** | 65.2 | 48.7 | 4.8 |
+| `olmo_long_tiny_text` | 237 | 78.4 | **85.2** | 59.0 | 61.6 |
+| `olmo_old_scans` | 395 | **70.5** | 53.4 | 42.1 | 31.3 |
+| `tables_derived` | 5,427 | 84.5 | 88.2 | 63.3 | **88.4** |
+| `synth_copies` | 1,881 | **85.4** | 79.5 | 46.2 | 73.1 |
+| `multiling_finepdfs` | 676 | 80.2 | **88.3** | 59.7 | 63.2 |
+| `realdoc_pages` | 445 | 77.1 | **77.6** | 21.1 | 71.6 |
+| `realdoc_pdfs` | 256 | **82.4** | 76.8 | 29.7 | 52.8 |
+| `rotation_skew` | 377 | 84.6 | **89.1** | 34.4 | 81.1 |
+| `tiny_plans` | 372 | 83.9 | 84.5 | 45.1 | **91.2** |
+| `handwriting_samples` | 324 | **66.3** | 53.0 | 50.0 | 50.0 |
+| `docparsing_images` | 299 | 86.3 | 80.6 | 29.1 | **87.0** |
+| `parsebench_docs` | 293 | **91.0** | **91.0** | 83.6 | 86.9 |
+| `forms_federal` | 127 | 74.1 | 59.2 | 16.3 | **75.0** |
+| `forms_filled` | 107 | 75.9 | 77.1 | 47.8 | **81.3** |
 | `forms_documentcloud` | 47 | 90.3 | 85.0 | **97.4** | 100.0 |
-| **OmniParseBench Headline** | **16,288** | **80.5** | **71.0** | **40.8** | **67.5** |
-| **olmOCR-bench suites (6-suite mean)** | **5,424** | **85.6** | **70.8** | **44.0** | **54.8** |
+| **OmniParseBench Headline** | **16,288** | **80.5** | **78.6** | **42.4** | **67.5** |
+| **olmOCR-bench suites (6-suite mean)** | **5,424** | **85.6** | **77.8** | **45.3** | **54.8** |
 | **Sustained Throughput** | — | **16.9 pg/s** | **23.6 pg/s** | **57.0 pg/s** | **2.1 pg/s** |
 
 ### CPU-only parsing
 
-If you have no GPU, Marker's `fast` (`23.6 pg/s`, `71.0` headline) and `no_ocr` (`57.0 pg/s`, `40.8` headline) modes run entirely in-process on CPU using Indra ONNX layout, reading order, and line/math OCR:
-- **`Marker fast` vs. `docling` & `PP-StructureV3` on CPU**: Scores **+3.5 points higher** than `docling` (`71.0` vs `67.5`) at **17× the CPU speed** (`23.6` vs `1.4 pg/s`), and **+12.6 points higher** than `PaddleOCR PP-StructureV3` (`58.4`) at **>130× the speed** (`23.6` vs `≤ 0.18 pg/s`).
-- **`Marker fast` & `no_ocr` vs. `liteparse` & `Tesseract 5`**: Plain text extractors (`liteparse` `14.0`, `liteparse --no-ocr` `12.0`, `Tesseract 5` `5.9`) lose all document structure — multi-column reading order gets scrambled, tables collapse into unstructured text (`0%` on table tests), and headings/footnotes disappear (`0%` on layout tests). Marker preserves multi-column reading order (`91.2%` layout in `fast`, `77.8%` in `no_ocr`) and reconstructs full HTML tables (`59.6%` in `fast`, `63.3%` on `tables_derived` in `no_ocr`).
+If you have no GPU, Marker's `fast` (`23.6 pg/s`, `78.6` headline) and `no_ocr` (`57.0 pg/s`, `42.4` headline) modes run entirely in-process on CPU using Indra ONNX layout, reading order, table structure recognition, and line/math OCR:
+- **`Marker fast` vs. `docling` & `PP-StructureV3` on CPU**: Scores **+11.1 points higher** than `docling` (`78.6` vs `67.5`) at **17× the CPU speed** (`23.6` vs `1.4 pg/s`), and **+20.2 points higher** than `PaddleOCR PP-StructureV3` (`58.4`) at **>130× the speed** (`23.6` vs `≤ 0.18 pg/s`).
+- **`Marker fast` & `no_ocr` vs. `liteparse` & `Tesseract 5`**: Plain text extractors (`liteparse` `14.0`, `liteparse --no-ocr` `12.0`, `Tesseract 5` `5.9`) lose all document structure — multi-column reading order gets scrambled, tables collapse into unstructured text (`0%` on table tests), and headings/footnotes disappear (`0%` on layout tests). Marker preserves multi-column reading order (`92.4%` layout in `fast`, `82.7%` in `no_ocr`) and reconstructs full HTML tables (`75.7%` in `fast`, `88.2%` on `tables_derived` in `fast`, `63.3%` in `no_ocr`).
 
 <img src="data/images/olmocr_digital.png" width="800px"/>
 

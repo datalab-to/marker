@@ -117,6 +117,8 @@ class IndraRecognitionPredictor:
             try:
                 onnx_dir = model_dir(self.model_path, math=self.math)
             except Exception:
+                from indra_ocr.models import MATH_OPTIONAL
+
                 cache_dir = (
                     Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
                     / "indra_ocr"
@@ -129,15 +131,26 @@ class IndraRecognitionPredictor:
                     "rec_cjk.onnx",
                     "rec_rtl.onnx",
                     "rec_world.onnx",
+                    "rec_hw.onnx",
+                    "hw.onnx",
                     "order.onnx",
                     "orient.onnx",
+                    "rotcls.onnx",
                     "script.onnx",
+                    "tsr_rel.onnx",
+                    "tsr_split.onnx",
+                    "tsr_refine.onnx",
+                    "table_verify.json",
+                    "math_span.onnx",
+                    "math_span.json",
                     "meta.json",
                     "lm.npz",
                     "lm_cjk.npz",
                     "lm_world.npz",
                 )
-                needed_files = base_files + (tuple(MATH_FILES) if self.math else ())
+                needed_files = base_files + (
+                    tuple(MATH_FILES) + tuple(MATH_OPTIONAL) if self.math else ()
+                )
                 token = os.environ.get("HF_TOKEN") or os.environ.get(
                     "HUGGING_FACE_HUB_TOKEN"
                 )
@@ -846,7 +859,9 @@ class IndraRecognitionPredictor:
             ):
                 t_html = md_tables[md_table_idx]
                 md_table_idx += 1
-                if blines[0] not in t_html:
+                t_plain = html.unescape(re.sub(r"<[^>]+>", " ", t_html))
+                first_words = [w for w in blines[0].split() if len(w) > 1]
+                if first_words and not all(w in t_plain for w in first_words):
                     block_html = f"<p>{format_inline_html(blines[0])}</p>\n{t_html}"
                 else:
                     block_html = t_html
@@ -1059,6 +1074,36 @@ class IndraRecognitionPredictor:
             from indra_ocr.pipeline import CELL_GAP
 
             rec = engine.recognize(padded, boxes)
+            if getattr(engine, "tsr_rel", None) is not None and len(boxes) >= 2:
+                try:
+                    from indra_ocr.math_span_img import unspliced
+                    from indra_ocr.table_rel import read_table
+
+                    tsr_html = read_table(
+                        engine.tsr_rel,
+                        padded,
+                        [
+                            (boxes[i, :4], unspliced(rec[i][2]))
+                            for i in range(len(boxes))
+                        ],
+                        engine._is_space,
+                        engine._decode,
+                        bool(getattr(engine, "_page_rtl", False)),
+                        getattr(engine, "tsr_rel_span", "geo"),
+                        getattr(engine, "tsr_split", None),
+                        getattr(engine, "tsr_refine", None),
+                    )
+                    if tsr_html and "<table" in tsr_html:
+                        idx_t = tsr_html.find("<table")
+                        if idx_t > 0:
+                            pre_txt = tsr_html[:idx_t].strip()
+                            tbl_txt = tsr_html[idx_t:].strip()
+                            if pre_txt:
+                                return f"<p>{format_inline_html(pre_txt)}</p>\n{tbl_txt}"
+                            return tbl_txt
+                        return tsr_html
+                except Exception:
+                    pass
             c_boxes_list = []
             c_texts = []
             for b, (text, conf, toks) in zip(boxes, rec):
