@@ -108,11 +108,13 @@ class TableProcessor(BaseProcessor):
         ocr_fallback = []  # (page, block) digital tables the heuristics missed
         for page in document.pages:
             for block in tables_by_page.get(page.page_id, []):
-                # Scanned/garbled pages: the full-page OCR already produced the
-                # table HTML - trust it, don't redo.
+                # Scanned/garbled pages or tables already reconstructed by Indra TSR:
+                # trust the table HTML unless an explicit min_recon_score forces the
+                # pdftext grid heuristic.
                 if block.html and not (
                     use_vlm_for_digital_tables
                     and block.text_extraction_method == "pdftext"
+                    and self.min_recon_score is not None
                 ):
                     self.table_stats["tables_ocr"] += 1
                     continue

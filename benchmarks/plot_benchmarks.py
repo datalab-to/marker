@@ -92,8 +92,8 @@ def plot_omniparsebench_scatter():
         ("Tesseract 5", 2.92, 5.9, False, 0, 18, "center"),
         ("Marker  vllm", 4.52, 85.9, True, 0, 18, "center"),
         ("Marker  balanced", 16.9, 80.5, True, 0, 18, "center"),
-        ("Marker  fast", 23.6, 71.0, True, 0, -22, "center"),
-        ("Marker  no_ocr", 57.0, 40.8, True, 0, 18, "center"),
+        ("Marker  fast", 23.6, 78.6, True, 0, -22, "center"),
+        ("Marker  no_ocr", 57.0, 42.4, True, 0, 18, "center"),
     ]
 
     for label, x, y, is_marker, dx, dy, ha in points:
@@ -159,12 +159,12 @@ def plot_omniparsebench_scores_bar():
         ("GLM-OCR", 81.5, False),
         ("Marker\nbalanced", 80.5, True),
         ("Paddle\nVL 1.6", 78.7, False),
+        ("Marker\nfast", 78.6, True),
         ("DeepSeek\nOCR 2", 75.2, False),
-        ("Marker\nfast", 71.0, True),
         ("docling", 67.5, False),
         ("Hunyuan\nOCR 1.5", 64.6, False),
         ("PP-Struct\nV3", 58.4, False),
-        ("Marker\nno_ocr", 40.8, True),
+        ("Marker\nno_ocr", 42.4, True),
         ("liteparse", 14.0, False),
     ]
 
@@ -230,10 +230,10 @@ def plot_omniparsebench_families():
         ("MinerU\n2.5-Pro", 77.4, 92.1, 91.7, False),
         ("Marker\nvllm", 83.8, 78.3, 95.7, True),
         ("GLM-OCR", 71.0, 84.2, 89.3, False),
-        ("Marker\nbalanced", 79.2, 70.1, 92.2, True),
+        ("Marker\nbalanced", 79.2, 72.9, 92.5, True),
         ("Paddle\nVL 1.6", 61.7, 83.7, 90.7, False),
+        ("Marker\nfast", 67.8, 75.7, 92.4, True),
         ("DeepSeek\nOCR 2", 64.2, 70.0, 91.4, False),
-        ("Marker\nfast", 62.3, 59.6, 91.2, True),
         ("docling", 44.4, 72.0, 85.9, False),
         ("PP-Struct\nV3", 55.6, 47.8, 71.7, False),
     ]
@@ -475,8 +475,8 @@ def plot_olmocr_charts():
         ("liteparse (no OCR)", 1721.0, 20.4, False, -20, -24, "center"),
         ("Marker  vllm", 4.5, 83.7, True, -10, 18, "center"),
         ("Marker  balanced", 16.9, 85.6, True, 0, 18, "center"),
-        ("Marker  fast", 23.6, 70.8, True, 0, -24, "center"),
-        ("Marker  no_ocr", 57.0, 44.0, True, 0, 18, "center"),
+        ("Marker  fast", 23.6, 77.8, True, 0, -24, "center"),
+        ("Marker  no_ocr", 57.0, 45.3, True, 0, 18, "center"),
     ]
 
     for label, x, y, is_marker, dx, dy, ha in points:
@@ -532,10 +532,10 @@ def plot_olmocr_charts():
     _style_axes(ax)
 
     cpu_points = [
-        ("Marker  fast", 23.6, 71.0, True, -10, 18, "center"),
-        ("Indra OCR", 49.4, 69.5, False, 15, 18, "center"),
+        ("Marker  fast", 23.6, 78.6, True, -12, -22, "center"),
+        ("Indra OCR", 30.0, 78.9, False, 16, 18, "center"),
         ("docling (CPU)", 1.38, 67.5, False, 0, 18, "center"),
-        ("Marker  no_ocr", 57.0, 40.8, True, 0, 18, "center"),
+        ("Marker  no_ocr", 57.0, 42.4, True, 0, 18, "center"),
         ("PP-StructureV3", 0.18, 58.4, False, 10, -24, "center"),
         ("liteparse", 9.74, 14.0, False, 0, 18, "center"),
         ("liteparse (no OCR)", 318.0, 12.0, False, -16, 18, "center"),
