@@ -28,8 +28,9 @@ _GARBLE_CHAR_FRAC = 0.02  # >2% private-use / replacement chars => garbled
 # Leader runs (TOC dot leaders, form underscores/dashes) - not real cells;
 # gridding them as columns explodes the column count, so they're dropped.
 _LEADER_ONLY = re.compile(r"^(?:[.·•…_\-]\s*){3,}$")
-_NUMISH = re.compile(r"^-?[\d,.]*\d[\d,.]*%?$")
-_NUM_TOK = re.compile(r"-?[\d,]+(\.\d+)?%?")
+# Optional leading sign: ASCII hyphen, U+2212 minus, or plus (e.g. +1.55).
+_NUMISH = re.compile(r"^[-\u2212+]?[\d,.]*\d[\d,.]*%?$")
+_NUM_TOK = re.compile(r"[-\u2212+]?[\d,]+(\.\d+)?%?")
 _YEAR = re.compile(r"^(19|20)\d\d$")
 _PCTISH = re.compile(r"(less than|to less|%)")
 
@@ -354,8 +355,10 @@ def _line_tokens(line: dict, bbox):
             ch = c.get("char", "")
             if not ch or ch.isspace():
                 if cur is not None and not cur[0].endswith(" "):
+                    # Don't extend the right edge: pdftext positions a space at
+                    # the START of the next word (zero width), so extending would
+                    # hide the cell gap and merge adjacent columns into one token.
                     cur[0] += " "
-                    cur[2] = max(cur[2], cx1)
                 continue
             # Split threshold: ~0.65x the char height. 0.25x-0.5x mis-split words
             # across font/style switches (e.g. "75.86 ± 11.42" or italic "n=");
