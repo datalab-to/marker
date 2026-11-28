@@ -86,3 +86,11 @@ def test_markdown_renderer_tables(pdf_document):
     renderer = MarkdownRenderer()
     md = renderer(pdf_document).markdown
     assert "54 <i>.45</i> 67<br>89 $x$" in md
+
+
+def test_markdown_single_row_table_has_single_separator():
+    md = MarkdownRenderer().md_cls.convert(
+        "<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>"
+    )
+    lines = [line for line in md.strip().split("\n") if line]
+    assert lines == ["| a | b |", "|---|---|"]
