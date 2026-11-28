@@ -223,10 +223,6 @@ class Markdownify(MarkdownConverter):
                 add_header_line()
                 added_header = True
 
-        # Handle one row tables
-        if total_rows == 1:
-            add_header_line()
-
         table_md = "\n".join(markdown_lines)
         return "\n\n" + table_md + "\n\n"
 
