@@ -2,6 +2,7 @@ import contextlib
 import ctypes
 import logging
 import re
+from threading import RLock
 from typing import Annotated, Dict, List, Optional, Set
 
 import pypdfium2 as pdfium
@@ -24,6 +25,9 @@ from marker.schema.text.span import Span
 
 # Ignore pypdfium2 warning about form flattening
 logging.getLogger("pypdfium2").setLevel(logging.ERROR)
+
+# PDFium is not thread-safe, even when threads use different documents.
+_pdfium_lock = RLock()
 
 
 class PdfProvider(BaseProvider):
@@ -120,18 +124,12 @@ class PdfProvider(BaseProvider):
 
     @contextlib.contextmanager
     def get_doc(self):
-        doc = None
-        try:
-            doc = pdfium.PdfDocument(self.filepath)
-
+        with _pdfium_lock, contextlib.closing(pdfium.PdfDocument(self.filepath)) as doc:
             # Must be called on the parent pdf, before retrieving pages to render correctly
             if self.flatten_pdf:
                 doc.init_forms()
 
             yield doc
-        finally:
-            if doc:
-                doc.close()
 
     def __len__(self) -> int:
         return self.page_count
